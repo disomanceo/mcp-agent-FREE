@@ -120,6 +120,18 @@ npm run start:chatgpt
 
 หรือดับเบิลคลิก `Personal MCP Agent.cmd`
 
+## Windows App-like Installer
+
+ติดตั้งจาก GitHub แบบคำสั่งเดียว:
+
+```powershell
+irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1 | iex
+```
+
+หลังติดตั้งจะมี shortcut ชื่อ `Personal MCP Agent` บน Desktop ให้ดับเบิลคลิกเปิดใช้งานได้ทันที
+
+รายละเอียดเพิ่มเติม: [docs/INSTALLER.md](docs/INSTALLER.md)
+
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.
