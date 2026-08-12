@@ -319,8 +319,9 @@ async function waitForNgrokUrl(exitError) {
         return tunnel.public_url.replace(/\/$/, "");
       }
     } catch {
-      await delay(500);
+      // The ngrok API can take a moment to come online.
     }
+    await delay(500);
   }
   throw new Error("ngrok did not expose a public HTTPS URL.");
 }
