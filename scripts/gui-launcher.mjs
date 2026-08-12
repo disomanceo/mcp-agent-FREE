@@ -58,6 +58,16 @@ app.post("/api/projects/default", (req, res) => {
   }
 });
 
+app.post("/api/projects/from-url", (req, res) => {
+  try {
+    const url = String(req.body?.url ?? "");
+    const result = addProjectFromUrl(url);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/start", async (_req, res) => {
   try {
     await startAll();
@@ -246,6 +256,203 @@ function setDefaultProject(project) {
   );
 }
 
+function addProjectFromUrl(rawUrl) {
+  const parsed = parseProjectUrl(rawUrl);
+  if (parsed.type === "github") {
+    return cloneGitHubProject(parsed);
+  }
+  return createLinkedProject(parsed);
+}
+
+function parseProjectUrl(rawUrl) {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) throw new Error("URL is required.");
+
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("Invalid URL.");
+  }
+
+  const host = url.hostname.toLowerCase();
+  const parts = url.pathname.split("/").filter(Boolean);
+
+  if (host === "github.com" && parts.length >= 2) {
+    const owner = cleanSlug(parts[0]);
+    const repo = cleanSlug(parts[1].replace(/\.git$/i, ""));
+    return {
+      type: "github",
+      name: repo,
+      sourceUrl: `https://github.com/${owner}/${repo}.git`,
+      displayUrl: `https://github.com/${owner}/${repo}`,
+      owner,
+      repo,
+    };
+  }
+
+  if (host === "vercel.com" && parts.length >= 2) {
+    const team = cleanSlug(parts[0]);
+    const project = cleanSlug(parts[1]);
+    return {
+      type: "vercel",
+      name: project,
+      displayUrl: `https://vercel.com/${team}/${project}`,
+      team,
+      project,
+    };
+  }
+
+  if (host === "script.google.com") {
+    const projectIndex = parts.findIndex((part) => part === "projects");
+    const scriptId = projectIndex >= 0 ? parts[projectIndex + 1] : undefined;
+    if (!scriptId) {
+      throw new Error("Could not find Google Apps Script project id in URL.");
+    }
+    return {
+      type: "gas",
+      name: `gas-${scriptId.slice(0, 10)}`,
+      displayUrl: trimmed,
+      scriptId,
+    };
+  }
+
+  throw new Error(
+    "Supported URLs: GitHub repository, Vercel project, or Google Apps Script project.",
+  );
+}
+
+function cloneGitHubProject(project) {
+  const workspaceRoot = requireWorkspaceRoot();
+  const projectPath = path.join(workspaceRoot, project.name);
+  if (fs.existsSync(projectPath)) {
+    throw new Error(`Project already exists: ${projectPath}`);
+  }
+
+  log("launcher", `Cloning ${project.displayUrl} into ${projectPath}...`);
+  const result = spawnSync("git", ["clone", project.sourceUrl, projectPath], {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.stdout) log("git", result.stdout.trimEnd());
+  if (result.stderr) log("git", result.stderr.trimEnd());
+  if (result.status !== 0) {
+    throw new Error("Git clone failed. Check the URL and GitHub access.");
+  }
+
+  writeProjectMetadata(projectPath, project);
+  upsertEnvValue("DEFAULT_PROJECT", project.name);
+  process.env.DEFAULT_PROJECT = project.name;
+  log("launcher", `Added GitHub project: ${project.name}`);
+  return { ok: true, project: project.name, kind: "github", cloned: true };
+}
+
+function createLinkedProject(project) {
+  const workspaceRoot = requireWorkspaceRoot();
+  const projectPath = path.join(workspaceRoot, uniqueProjectName(workspaceRoot, project.name));
+  fs.mkdirSync(path.join(projectPath, ".personal-mcp"), { recursive: true });
+  writeProjectMetadata(projectPath, project);
+  fs.writeFileSync(path.join(projectPath, "README.md"), linkedProjectReadme(project), "utf8");
+
+  const projectName = path.basename(projectPath);
+  upsertEnvValue("DEFAULT_PROJECT", projectName);
+  process.env.DEFAULT_PROJECT = projectName;
+  log("launcher", `Added linked ${project.type.toUpperCase()} project: ${projectName}`);
+  return { ok: true, project: projectName, kind: project.type, cloned: false };
+}
+
+function writeProjectMetadata(projectPath, project) {
+  fs.mkdirSync(path.join(projectPath, ".personal-mcp"), { recursive: true });
+  fs.writeFileSync(
+    path.join(projectPath, ".personal-mcp", "project.json"),
+    JSON.stringify(
+      {
+        ...project,
+        addedAt: new Date().toISOString(),
+        note:
+          project.type === "github"
+            ? "Local git repository cloned from GitHub."
+            : "Linked project wrapper. Add or sync source files here before asking ChatGPT to edit code.",
+      },
+      null,
+      2,
+    ) + "\n",
+    "utf8",
+  );
+}
+
+function linkedProjectReadme(project) {
+  if (project.type === "vercel") {
+    return `# ${project.project}
+
+Linked Vercel project.
+
+- Vercel URL: ${project.displayUrl}
+- Team: ${project.team}
+- Project: ${project.project}
+
+This folder is a Personal MCP Agent project wrapper. If this Vercel project is connected to GitHub, add the GitHub repository URL in the launcher to clone the real source code into D:\\AI-Workspace.
+
+Useful prompt:
+
+\`\`\`text
+อ่าน README.md และ .personal-mcp/project.json ของโปรเจกต์นี้ แล้วช่วยสรุปว่าต้องการ source code จาก GitHub repo ไหนต่อ
+\`\`\`
+`;
+  }
+
+  return `# Google Apps Script ${project.scriptId}
+
+Linked Google Apps Script project.
+
+- Apps Script URL: ${project.displayUrl}
+- Script ID: ${project.scriptId}
+
+This folder is a Personal MCP Agent project wrapper. To edit GAS code locally, sync the Apps Script project into this folder with clasp, then ask ChatGPT to work on the local files.
+
+Typical clasp flow:
+
+\`\`\`powershell
+npm install -g @google/clasp
+clasp login
+clasp clone ${project.scriptId} .
+\`\`\`
+
+Useful prompt:
+
+\`\`\`text
+โปรเจกต์นี้เป็น Google Apps Script Web App ช่วยอ่าน README.md และ .personal-mcp/project.json แล้วแนะนำขั้นตอน sync ด้วย clasp ให้หน่อย
+\`\`\`
+`;
+}
+
+function uniqueProjectName(workspaceRoot, preferred) {
+  let candidate = cleanSlug(preferred);
+  let index = 2;
+  while (fs.existsSync(path.join(workspaceRoot, candidate))) {
+    candidate = `${cleanSlug(preferred)}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function cleanSlug(value) {
+  return String(value)
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function requireWorkspaceRoot() {
+  const workspaceRoot = process.env.WORKSPACE_ROOT;
+  if (!workspaceRoot) throw new Error("WORKSPACE_ROOT is missing.");
+  if (!fs.existsSync(workspaceRoot)) {
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+  }
+  return workspaceRoot;
+}
+
 function findNgrok() {
   const candidates = [
     path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "ngrok.exe"),
@@ -349,6 +556,7 @@ function renderPage() {
         gap: 16px;
       }
       .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .column { display: grid; gap: 10px; }
       .title { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
       .status {
         display: inline-flex;
@@ -361,7 +569,7 @@ function renderPage() {
       }
       .status.ready { background: #dff6eb; color: var(--green); }
       .status.error { background: #ffe6e6; color: var(--red); }
-      button, select {
+      button, select, input {
         min-height: 38px;
         border: 1px solid var(--line);
         border-radius: 7px;
@@ -374,6 +582,7 @@ function renderPage() {
       button.danger { color: var(--red); }
       button:disabled { opacity: 0.55; cursor: not-allowed; }
       select { min-width: 230px; }
+      input { flex: 1; min-width: 300px; }
       .url {
         flex: 1;
         min-width: 260px;
@@ -445,6 +654,14 @@ function renderPage() {
             <button id="setProject">Set Active Project</button>
           </div>
           <p class="hint">โปรเจกต์ต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
+          <div class="column" style="margin-top: 14px">
+            <div class="title">Add Project from URL</div>
+            <div class="row">
+              <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
+              <button id="addProjectUrl">Add URL</button>
+            </div>
+            <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
+          </div>
         </section>
 
         <section>
@@ -471,6 +688,8 @@ function renderPage() {
         copy: document.querySelector("#copy"),
         url: document.querySelector("#url"),
         projects: document.querySelector("#projects"),
+        projectUrl: document.querySelector("#projectUrl"),
+        addProjectUrl: document.querySelector("#addProjectUrl"),
         setProject: document.querySelector("#setProject"),
         workspace: document.querySelector("#workspace"),
         activeProject: document.querySelector("#activeProject"),
@@ -487,6 +706,11 @@ function renderPage() {
       });
       els.setProject.addEventListener("click", async () => {
         await post("/api/projects/default", { project: els.projects.value });
+        await refreshAll();
+      });
+      els.addProjectUrl.addEventListener("click", async () => {
+        await post("/api/projects/from-url", { url: els.projectUrl.value });
+        els.projectUrl.value = "";
         await refreshAll();
       });
 

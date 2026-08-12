@@ -88,6 +88,14 @@ For a simple step-by-step guide after installation, read:
 
 In the GUI, choose a project from the dropdown and click `Set Active Project`.
 
+You can also paste a URL into `Add Project from URL`.
+
+Supported URL types:
+
+- GitHub repository: cloned into `D:\AI-Workspace`
+- Vercel project: creates a linked project wrapper with metadata
+- Google Apps Script project: creates a linked project wrapper with Script ID and clasp instructions
+
 Or use PowerShell:
 
 ```powershell

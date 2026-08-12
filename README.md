@@ -142,6 +142,12 @@ irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/insta
 
 สำหรับผู้ใช้ทั่วไป สามารถดาวน์โหลดตัวติดตั้ง `setup.exe` ได้จาก [GitHub Releases](https://github.com/disomanceo/personal-mcp-agent/releases/latest)
 
+GUI รองรับการเพิ่มโปรเจกต์จาก URL:
+
+- GitHub repository URL: clone เข้า `D:\AI-Workspace`
+- Vercel project URL: สร้าง linked project พร้อม metadata
+- Google Apps Script URL: สร้าง linked project พร้อม Script ID และคำแนะนำ `clasp`
+
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.

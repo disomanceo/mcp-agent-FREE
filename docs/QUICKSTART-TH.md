@@ -109,7 +109,23 @@ npm run project:set -- TravelTank300
 
 ## 6. เพิ่มโปรเจกต์ใหม่
 
-ให้เอาโปรเจกต์ไปไว้ใต้ `D:\AI-Workspace`
+วิธีง่ายสุดคือเพิ่มจากหน้า GUI:
+
+1. เปิด `Personal MCP Agent`
+2. วาง URL ในช่อง `Add Project from URL`
+3. กด `Add URL`
+4. ถ้าเป็น GitHub ระบบจะ clone source code ให้
+5. ถ้าเป็น Vercel หรือ Google Apps Script ระบบจะสร้าง linked project พร้อม README และ metadata
+
+ตัวอย่าง URL ที่รองรับ:
+
+```text
+https://github.com/disomanceo/smart-bill-payment-tracker
+https://vercel.com/disomanceo/pm-coming
+https://script.google.com/home/projects/1iy2pVV7YPZBbY-wcUaQ_DYi2LpGTLMZpL41rPbYIdwmMh3MG42QQC96v/edit
+```
+
+ถ้าทำเองผ่าน PowerShell ให้เอาโปรเจกต์ไปไว้ใต้ `D:\AI-Workspace`
 
 ตัวอย่าง clone จาก GitHub:
 
@@ -123,6 +139,34 @@ git clone https://github.com/disomanceo/TravelTank300.git
 ```powershell
 cd D:\personal-mcp-agent
 npm run project:set -- TravelTank300
+```
+
+## 6.1 กรณีรู้แค่ GitHub / Vercel / GAS URL
+
+GitHub:
+
+- ใช้งานดีที่สุด
+- ระบบ clone repo เป็น local project ได้เลย
+- ChatGPT สามารถอ่านไฟล์ แก้โค้ด test build commit/push ได้ตาม permission
+
+Vercel:
+
+- Vercel URL อย่างเดียวมักเป็นหน้า deploy/project
+- ถ้า Vercel project เชื่อม GitHub อยู่ ควรหา GitHub repo URL แล้วเพิ่ม URL นั้นแทน
+- ถ้ายังไม่มี GitHub URL ระบบจะสร้าง linked project เพื่อเก็บข้อมูล Vercel ไว้ก่อน
+
+Google Apps Script:
+
+- URL ของ GAS ไม่ใช่ git repo โดยตรง
+- ระบบจะสร้าง linked project พร้อม Script ID
+- ถ้าจะให้ ChatGPT แก้ code จริง ควร sync code ลง local ด้วย `clasp`
+
+ตัวอย่างในโฟลเดอร์ linked GAS:
+
+```powershell
+npm install -g @google/clasp
+clasp login
+clasp clone <SCRIPT_ID> .
 ```
 
 ## 7. อัปเดตตัวโปรแกรม
