@@ -178,6 +178,17 @@ const server = app.listen(guiPort, "127.0.0.1", () => {
     openBrowser(url);
   }
 });
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    const url = `http://127.0.0.1:${guiPort}`;
+    console.log(`Personal MCP Agent GUI is already running: ${url}`);
+    if (process.env.GUI_NO_OPEN !== "1") {
+      openBrowser(url);
+    }
+    process.exit(0);
+  }
+  throw error;
+});
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
@@ -186,9 +197,13 @@ async function startAll() {
   if (state.phase === "starting" || state.phase === "ready") return;
 
   if (await gatewayHealthy()) {
-    throw new Error(
-      `Gateway already responds on port ${gatewayPort}. Stop the old launcher first.`,
-    );
+    cleanupOrphanProcesses();
+    await delay(700);
+    if (await gatewayHealthy()) {
+      throw new Error(
+        `Gateway already responds on port ${gatewayPort}. Close old Personal MCP Agent windows, then retry.`,
+      );
+    }
   }
 
   state = { phase: "starting", mcpUrl: "", error: "", startedAt: new Date().toISOString() };
@@ -264,6 +279,7 @@ function cleanup() {
   for (const child of children.splice(0).reverse()) {
     child.kill();
   }
+  cleanupOrphanProcesses();
 }
 
 function shutdown() {
@@ -323,6 +339,37 @@ function childExitError(child, label) {
   if (child.exitCodeSeen === null || child.exitCodeSeen === undefined) return null;
   const detail = child.lastOutput ? ` Last output: ${child.lastOutput}` : "";
   return new Error(`${label} exited with code ${child.exitCodeSeen}.${detail}`);
+}
+
+function cleanupOrphanProcesses() {
+  if (process.platform !== "win32") return;
+  const root = process.cwd().replaceAll("'", "''");
+  const script = `
+$root = '${root}'
+$current = ${process.pid}
+$gatewayPort = '${gatewayPort}'
+Get-CimInstance Win32_Process | Where-Object {
+  $cmd = [string]$_.CommandLine
+  if ($_.ProcessId -eq $current -or [string]::IsNullOrWhiteSpace($cmd)) { return $false }
+  $isPersonalNode = $cmd -like "*$root*" -and (
+    $cmd -like "*scripts/gui-launcher.mjs*" -or
+    $cmd -like "*apps/gateway/dist/index.js*" -or
+    $cmd -like "*apps/desktop-agent/dist/index.js*"
+  )
+  $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$gatewayPort*"
+  return $isPersonalNode -or $isNgrok
+} | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
+`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  if (result.status === 0) return;
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+  if (output) log("launcher", `Process cleanup warning: ${output}`);
 }
 
 function delay(ms) {
