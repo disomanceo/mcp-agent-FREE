@@ -41,7 +41,7 @@ app.get("/api/status", async (_req, res) => {
     defaultProject: process.env.DEFAULT_PROJECT ?? "",
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
     version: appVersion,
-    logs: logs.slice(-250),
+    logs: combinedLogs(),
   });
 });
 
@@ -167,6 +167,7 @@ app.post("/api/deploy/gas", (req, res) => {
 
 app.post("/api/logs/clear", (_req, res) => {
   logs.splice(0);
+  clearAuditLog();
   res.json({ ok: true });
 });
 
@@ -966,9 +967,57 @@ function openBrowser(url) {
 function log(label, text) {
   if (!text) return;
   for (const line of String(text).split(/\r?\n/)) {
-    logs.push({ time: new Date().toLocaleTimeString(), label, text: line });
+    const now = new Date();
+    logs.push({ timestamp: now.toISOString(), time: now.toLocaleTimeString(), label, text: line });
   }
   while (logs.length > 500) logs.shift();
+}
+
+function combinedLogs() {
+  return [...logs, ...readAuditLogs()]
+    .sort((a, b) => Date.parse(a.timestamp ?? "") - Date.parse(b.timestamp ?? ""))
+    .slice(-300);
+}
+
+function readAuditLogs() {
+  const filePath = path.resolve(process.env.AUDIT_LOG_PATH ?? "./audit/agent-tools.jsonl");
+  if (!fs.existsSync(filePath)) return [];
+  return fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^\uFEFF/, ""))
+    .filter(Boolean)
+    .slice(-220)
+    .map((line) => {
+      try {
+        const event = JSON.parse(line);
+        const timestamp = String(event.timestamp ?? new Date().toISOString());
+        return {
+          timestamp,
+          time: new Date(timestamp).toLocaleTimeString(),
+          label: "code",
+          text: formatAuditEvent(event),
+          success: Boolean(event.success),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function formatAuditEvent(event) {
+  const status = event.success ? "OK" : `ERROR ${event.errorCode ?? ""}`.trim();
+  const project = event.project ? `${event.project} · ` : "";
+  const summary = event.summary ? ` · ${event.summary}` : "";
+  const duration = Number.isFinite(event.durationMs) ? ` (${event.durationMs}ms)` : "";
+  return `${project}${event.tool}${summary} · ${status}${duration}`;
+}
+
+function clearAuditLog() {
+  const filePath = path.resolve(process.env.AUDIT_LOG_PATH ?? "./audit/agent-tools.jsonl");
+  if (!fs.existsSync(filePath)) return;
+  fs.writeFileSync(filePath, "", "utf8");
 }
 
 function messageOf(error) {
@@ -1515,6 +1564,8 @@ function renderPage() {
       }
       .hint { color: var(--muted); font-size: 13px; }
       .log-line { color: #64e48f; }
+      .log-line.code { color: #38bdf8; }
+      .log-line.error { color: #ff8a92; }
       svg { width: 20px; height: 20px; flex: 0 0 auto; }
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
@@ -1952,7 +2003,11 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
-        const logHtml = data.logs.map((item) => '<span class="log-line">●  ' + escapeHtml(item.time) + '  INFO</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text)).join("\\n");
+        const logHtml = data.logs.map((item) => {
+          const lineClass = item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
+          const level = item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
+          return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text);
+        }).join("\\n");
         els.logs.innerHTML = logHtml;
         els.logsFull.innerHTML = logHtml;
         els.logs.scrollTop = els.logs.scrollHeight;

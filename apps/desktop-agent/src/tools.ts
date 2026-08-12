@@ -37,6 +37,7 @@ export async function executeTool(
 ): Promise<unknown> {
   const start = Date.now();
   let project: string | undefined;
+  let summary: string | undefined;
 
   try {
     assertToolAllowed(tool, context.permissionMode);
@@ -46,6 +47,7 @@ export async function executeTool(
       deviceId: context.deviceId,
       tool,
       project,
+      summary,
       durationMs: Date.now() - start,
       success: true,
     });
@@ -57,6 +59,7 @@ export async function executeTool(
       deviceId: context.deviceId,
       tool,
       project,
+      summary,
       durationMs: Date.now() - start,
       success: false,
       errorCode: agentError.code,
@@ -75,30 +78,38 @@ export async function executeTool(
       case "list_files": {
         const parsed = listFilesArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
+        summary = `list files in ${parsed.path}`;
         return listFiles(ctx.workspaceRoot, project, parsed.path, parsed.limit);
       }
       case "read_file": {
         const parsed = readFileArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
+        summary = `read ${parsed.path}`;
         return readFile(ctx.workspaceRoot, project, parsed.path, parsed.maxBytes);
       }
       case "write_file": {
         const parsed = writeFileArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
-        return writeFile(ctx.workspaceRoot, { ...parsed, project });
+        const result = await writeFile(ctx.workspaceRoot, { ...parsed, project });
+        summary = `${result.created ? "created" : "updated"} ${result.path} (${result.sizeBytes} bytes)`;
+        return result;
       }
       case "git_status":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "checked git status";
         return gitCommand(ctx.workspaceRoot, project, "git_status");
       case "git_diff":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "reviewed git diff";
         return gitCommand(ctx.workspaceRoot, project, "git_diff");
       case "git_diff_staged":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "reviewed staged diff";
         return fixedGitCommand(ctx.workspaceRoot, project, ["diff", "--cached"], 60_000);
       case "git_log": {
         const parsed = gitLogArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
+        summary = `read last ${parsed.limit} commits`;
         return fixedGitCommand(ctx.workspaceRoot, project, [
           "log",
           "--oneline",
@@ -108,30 +119,38 @@ export async function executeTool(
       case "git_stage": {
         const parsed = gitStageArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
+        summary = `staged ${parsed.paths.length} file(s): ${parsed.paths.slice(0, 4).join(", ")}`;
         return gitStage(ctx.workspaceRoot, project, parsed.paths);
       }
       case "git_commit": {
         const parsed = gitCommitArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
+        summary = `committed: ${parsed.message.slice(0, 120)}`;
         return gitCommit(ctx.workspaceRoot, project, parsed.message, parsed.runChecks);
       }
       case "git_push":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "pushed current branch";
         return gitPush(ctx.workspaceRoot, project);
       case "git_pull_ff_only":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "pulled latest changes";
         return gitPullFfOnly(ctx.workspaceRoot, project);
       case "npm_lint":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "ran npm lint";
         return npmCommand(ctx.workspaceRoot, project, "npm_lint");
       case "npm_install":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "ran npm install";
         return npmInstall(ctx.workspaceRoot, project);
       case "npm_build":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "ran npm build";
         return npmCommand(ctx.workspaceRoot, project, "npm_build");
       case "npm_test":
         project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
+        summary = "ran npm test";
         return npmCommand(ctx.workspaceRoot, project, "npm_test");
       default:
         throw new AgentError("INVALID_ARGUMENTS", `Unknown tool: ${name}`);

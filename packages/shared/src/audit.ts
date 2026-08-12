@@ -6,6 +6,7 @@ export type AuditEvent = {
   deviceId: string;
   tool: string;
   project?: string;
+  summary?: string;
   durationMs: number;
   success: boolean;
   errorCode?: string;

@@ -27,6 +27,7 @@ describe("tool argument validation", () => {
   it("writes a file in WORK mode", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
     fs.mkdirSync(path.join(root, "Demo"));
+    const auditLogPath = path.join(root, "audit.jsonl");
 
     const result = await executeTool(
       "write_file",
@@ -40,12 +41,19 @@ describe("tool argument validation", () => {
         deviceId: "test",
         workspaceRoot: root,
         permissionMode: "WORK",
-        auditLogPath: path.join(root, "audit.jsonl"),
+        auditLogPath,
       },
     );
 
     expect(result).toMatchObject({ path: "src/hello.ts", created: true });
     expect(fs.readFileSync(path.join(root, "Demo", "src", "hello.ts"), "utf8")).toContain("hello");
+    const auditEvent = JSON.parse(fs.readFileSync(auditLogPath, "utf8").trim());
+    expect(auditEvent).toMatchObject({
+      tool: "write_file",
+      project: "Demo",
+      summary: "created src/hello.ts (30 bytes)",
+      success: true,
+    });
   });
 
   it("uses defaultProject when project is omitted", async () => {
