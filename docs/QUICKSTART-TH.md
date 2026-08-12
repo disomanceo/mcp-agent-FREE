@@ -11,6 +11,13 @@
 - เอา URL นั้นไปใส่ใน ChatGPT ที่เมนู MCP / ตัวเชื่อมต่อ
 - เลข Version จะแสดงใน sidebar ด้านซ้ายของหน้า GUI
 
+## เมนูด้านซ้ายคืออะไร
+
+- `หน้าหลัก`: ใช้ Start/Stop Agent, copy MCP URL, เลือก active project แบบเร็ว
+- `โปรเจกต์`: แสดงรายชื่อโปรเจกต์ทั้งหมด พร้อมชนิดโปรเจกต์, คำอธิบาย, สถานะ git และ commit ล่าสุด
+- `บันทึกการทำงาน`: log ของ launcher, gateway, desktop agent และ ngrok ใช้ตรวจว่าเชื่อมต่อสำเร็จหรือ error ตรงไหน
+- `ตั้งค่า`: ข้อมูลระบบ เช่น version, workspace, active project, permission mode, GUI port และ Gateway port
+
 ## 1. เปิดใช้งาน
 
 วิธีง่ายสุด:

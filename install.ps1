@@ -77,6 +77,10 @@ Invoke-Step "Creating Desktop shortcut" {
   $shortcut.TargetPath = $cmdPath
   $shortcut.WorkingDirectory = $InstallDir
   $shortcut.Description = "Start Personal MCP Agent for ChatGPT"
+  $iconPath = Join-Path $InstallDir "assets\app-icon.ico"
+  if (Test-Path -LiteralPath $iconPath) {
+    $shortcut.IconLocation = $iconPath
+  }
   $shortcut.Save()
   Write-Host "Shortcut created: $shortcutPath"
 }

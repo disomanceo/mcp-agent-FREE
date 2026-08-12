@@ -25,6 +25,7 @@ let state = {
 };
 
 app.use(express.json());
+app.use("/assets", express.static(path.join(process.cwd(), "assets")));
 
 app.get("/", (_req, res) => {
   res.type("html").send(renderPage());
@@ -46,6 +47,17 @@ app.get("/api/status", async (_req, res) => {
 app.get("/api/projects", (_req, res) => {
   try {
     res.json({ projects: listProjects(), defaultProject: process.env.DEFAULT_PROJECT ?? "" });
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.get("/api/projects/details", (_req, res) => {
+  try {
+    res.json({
+      projects: listProjectDetails(),
+      defaultProject: process.env.DEFAULT_PROJECT ?? "",
+    });
   } catch (error) {
     res.status(400).json({ error: messageOf(error) });
   }
@@ -235,6 +247,94 @@ function listProjects() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+}
+
+function listProjectDetails() {
+  const workspaceRoot = process.env.WORKSPACE_ROOT;
+  if (!workspaceRoot || !fs.existsSync(workspaceRoot)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(workspaceRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => projectDetails(workspaceRoot, entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function projectDetails(workspaceRoot, name) {
+  const projectPath = path.join(workspaceRoot, name);
+  const metadata = readJson(path.join(projectPath, ".personal-mcp", "project.json"));
+  const packageJson = readJson(path.join(projectPath, "package.json"));
+  const readmeSummary = readReadmeSummary(projectPath);
+  const isGit = fs.existsSync(path.join(projectPath, ".git"));
+  const latestCommit = isGit
+    ? gitSummary(projectPath, ["log", "-1", "--pretty=format:%h|%ci|%s"])
+    : null;
+  const gitStatus = isGit ? gitSummary(projectPath, ["status", "--short"]) : "";
+  const remote = isGit ? gitSummary(projectPath, ["remote", "get-url", "origin"]) : "";
+  const kind = metadata?.type ?? (isGit ? "github" : packageJson ? "local" : "folder");
+  const description =
+    packageJson?.description ||
+    metadata?.note ||
+    readmeSummary ||
+    (kind === "github"
+      ? "Git repository in the local workspace."
+      : "Local project folder in the workspace.");
+
+  return {
+    name,
+    kind,
+    active: name === process.env.DEFAULT_PROJECT,
+    path: projectPath,
+    description,
+    packageName: packageJson?.name ?? "",
+    latestCommit: parseLatestCommit(latestCommit),
+    dirty: Boolean(gitStatus.trim()),
+    gitStatus: gitStatus.trim(),
+    remote: remote.trim(),
+    sourceUrl: metadata?.displayUrl ?? metadata?.sourceUrl ?? remote.trim(),
+  };
+}
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readReadmeSummary(projectPath) {
+  for (const fileName of ["README.md", "readme.md"]) {
+    const filePath = path.join(projectPath, fileName);
+    if (!fs.existsSync(filePath)) continue;
+    const text = fs.readFileSync(filePath, "utf8");
+    const line = text
+      .split(/\r?\n/)
+      .map((item) => item.replace(/^#+\s*/, "").trim())
+      .find((item) => item.length > 0);
+    if (line) return line.slice(0, 180);
+  }
+  return "";
+}
+
+function gitSummary(cwd, args) {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  if (result.status !== 0) return "";
+  return result.stdout;
+}
+
+function parseLatestCommit(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const [hash, date, ...messageParts] = text.split("|");
+  return { hash, date, message: messageParts.join("|") };
 }
 
 function setDefaultProject(project) {
@@ -645,10 +745,14 @@ function renderPage() {
         display: flex;
         align-items: center;
         gap: 12px;
+        width: 100%;
         min-height: 56px;
         padding: 0 16px;
+        border: 1px solid transparent;
         border-radius: 8px;
+        background: transparent;
         color: var(--sidebar-muted);
+        text-align: left;
         font-weight: 650;
       }
       .nav-item.active {
@@ -745,6 +849,8 @@ function renderPage() {
         font-size: 15px;
       }
       .stack { display: grid; gap: 14px; }
+      .view { display: none; }
+      .view.active-view { display: block; }
       .grid {
         display: grid;
         grid-template-columns: 1fr 1.05fr;
@@ -866,6 +972,62 @@ function renderPage() {
         gap: 12px;
         margin-bottom: 12px;
       }
+      .project-list {
+        display: grid;
+        gap: 12px;
+      }
+      .project-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+      .project-name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+        font-size: 17px;
+        font-weight: 800;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .badge.active-badge {
+        border-color: rgba(30, 189, 114, 0.38);
+        color: var(--green-2);
+        background: rgba(30, 189, 114, 0.08);
+      }
+      .project-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .project-meta strong {
+        display: block;
+        color: var(--ink);
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
       pre {
         height: 220px;
         margin: 0;
@@ -883,7 +1045,7 @@ function renderPage() {
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
         .sidebar { position: relative; height: auto; }
-        .hero-card, .grid, .info-grid { grid-template-columns: 1fr; }
+        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .content { padding: 18px; }
@@ -898,17 +1060,17 @@ function renderPage() {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">${icon("cube")}</div>
+          <div class="brand-mark"><img src="/assets/app-icon.png" alt="" style="width:30px;height:30px" /></div>
           <div>
             <div class="brand-title">Personal MCP Agent</div>
             <div class="brand-version">Version ${appVersion}</div>
           </div>
         </div>
         <nav class="nav">
-          <div class="nav-item active">${icon("home")} หน้าหลัก</div>
-          <div class="nav-item">${icon("folder")} โปรเจกต์</div>
-          <div class="nav-item">${icon("file")} บันทึกการทำงาน</div>
-          <div class="nav-item">${icon("settings")} ตั้งค่า</div>
+          <button class="nav-item active" data-view="home">${icon("home")} หน้าหลัก</button>
+          <button class="nav-item" data-view="projects">${icon("folder")} โปรเจกต์</button>
+          <button class="nav-item" data-view="logs">${icon("file")} บันทึกการทำงาน</button>
+          <button class="nav-item" data-view="settings">${icon("settings")} ตั้งค่า</button>
         </nav>
         <div class="device-card">
           <div class="row">${icon("monitor")} <strong>Windows Desktop</strong></div>
@@ -925,81 +1087,127 @@ function renderPage() {
           <div class="top-actions">
             <span id="status" class="status">Stopped</span>
             <button id="themeToggle" class="icon-btn" title="สลับโหมดสว่าง/มืด">${icon("sun")}</button>
-            <button class="icon-btn" title="ตั้งค่า">${icon("settings")}</button>
+            <button id="settingsTop" class="icon-btn" title="ตั้งค่า">${icon("settings")}</button>
           </div>
         </div>
 
-        <section class="hero-card">
-          <div class="agent-orb"><div class="robot">${icon("bot")}</div></div>
-          <div>
-            <h2 class="hero-title"><span id="heroTitle">Agent ยังไม่ทำงาน</span> ${icon("shield")}</h2>
-            <div class="hero-subtitle">Windows Desktop Agent <span aria-hidden="true">•</span> <span id="heroMode">WORK mode</span></div>
-            <div class="row">
-              <button id="start" class="primary">${icon("play")} เริ่มทำงาน</button>
-              <button id="stop" class="danger">${icon("square")} หยุด</button>
-              <button id="refresh">${icon("refresh")} รีเฟรช</button>
+        <div id="view-home" class="view active-view">
+          <section class="hero-card">
+            <div class="agent-orb"><div class="robot">${icon("bot")}</div></div>
+            <div>
+              <h2 class="hero-title"><span id="heroTitle">Agent ยังไม่ทำงาน</span> ${icon("shield")}</h2>
+              <div class="hero-subtitle">Windows Desktop Agent <span aria-hidden="true">•</span> <span id="heroMode">WORK mode</span></div>
+              <div class="row">
+                <button id="start" class="primary">${icon("play")} เริ่มทำงาน</button>
+                <button id="stop" class="danger">${icon("square")} หยุด</button>
+                <button id="refresh">${icon("refresh")} รีเฟรช</button>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <div class="stack">
-          <section class="card">
-            <div class="title">MCP URL สำหรับ ChatGPT</div>
-            <div class="row">
-              <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
-              <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
-            </div>
-            <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
           </section>
 
-          <div class="grid">
+          <div class="stack">
             <section class="card">
-              <div class="title">โปรเจกต์ที่ใช้งาน</div>
+              <div class="title">MCP URL สำหรับ ChatGPT</div>
               <div class="row">
-                <select id="projects"></select>
-                <button id="setProject">${icon("star")} ตั้งเป็นโปรเจกต์หลัก</button>
+                <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
+                <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
               </div>
-              <p class="hint">โปรเจกต์ที่ดีต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
-              <div class="column" style="margin-top: 16px">
-                <div class="title">เพิ่มโปรเจกต์จาก URL</div>
-                <div class="row">
-                  <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
-                  <button id="addProjectUrl">${icon("plus")} เพิ่ม URL</button>
-                </div>
-                <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
-              </div>
+              <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
             </section>
 
+            <div class="grid">
+              <section class="card">
+                <div class="title">โปรเจกต์ที่ใช้งาน</div>
+                <div class="row">
+                  <select id="projects"></select>
+                  <button id="setProject">${icon("star")} ตั้งเป็นโปรเจกต์หลัก</button>
+                </div>
+                <p class="hint">โปรเจกต์ที่ดีต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
+                <div class="column" style="margin-top: 16px">
+                  <div class="title">เพิ่มโปรเจกต์จาก URL</div>
+                  <div class="row">
+                    <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
+                    <button id="addProjectUrl">${icon("plus")} เพิ่ม URL</button>
+                  </div>
+                  <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="title">ข้อมูลระบบ</div>
+                <div class="info-grid">
+                  <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
+                  <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
+                  <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+                </div>
+              </section>
+            </div>
+
             <section class="card">
-              <div class="title">ข้อมูลระบบ</div>
-              <div class="info-grid">
-                <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
-                <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
-                <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+              <div class="logs-head">
+                <div class="title" style="margin:0">บันทึกการทำงาน</div>
+                <div class="row">
+                  <button id="logFilter">${icon("filter")} ทั้งหมด</button>
+                  <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
+                </div>
               </div>
+              <pre id="logs"></pre>
             </section>
           </div>
+        </div>
 
+        <div id="view-projects" class="view">
           <section class="card">
             <div class="logs-head">
-              <div class="title" style="margin:0">บันทึกการทำงาน</div>
-              <div class="row">
-                <button id="logFilter">${icon("filter")} ทั้งหมด</button>
-                <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
+              <div>
+                <div class="title" style="margin:0">โปรเจกต์ทั้งหมด</div>
+                <p class="hint">แสดงว่าแต่ละโปรเจกต์คืออะไร ทำอะไรอยู่ถึงไหน และ commit ล่าสุดคืออะไร</p>
               </div>
+              <button id="refreshProjects">${icon("refresh")} รีเฟรช</button>
             </div>
-            <pre id="logs"></pre>
+            <div id="projectDetails" class="project-list"></div>
+          </section>
+        </div>
+
+        <div id="view-logs" class="view">
+          <section class="card">
+            <div class="logs-head">
+              <div>
+                <div class="title" style="margin:0">บันทึกการทำงาน คืออะไร?</div>
+                <p class="hint">คือ log ของ launcher, gateway, desktop agent และ ngrok ในรอบที่เปิดใช้งานนี้ ใช้ดูว่าเชื่อมต่อสำเร็จไหม หรือ error ตรงไหน</p>
+              </div>
+              <button id="clearLogsFull">${icon("trash")} ล้างประวัติ</button>
+            </div>
+            <pre id="logsFull"></pre>
+          </section>
+        </div>
+
+        <div id="view-settings" class="view">
+          <section class="card">
+            <div class="title">ตั้งค่า คืออะไร?</div>
+            <p class="hint">หน้านี้รวมค่าพื้นฐานของระบบ เช่น version, workspace, active project, permission mode และ port ที่ใช้งาน เพื่อให้ตรวจสอบง่ายก่อนให้ ChatGPT ทำงานบนเครื่อง</p>
+            <div class="settings-grid" style="margin-top: 16px">
+              <div class="info-card"><div class="info-icon">${icon("cube")}</div><strong>Version</strong><span id="settingsVersion"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace Root</strong><span id="settingsWorkspace"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="settingsProject"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Permission Mode</strong><span id="settingsMode"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("monitor")}</div><strong>GUI Port</strong><span>${guiPort}</span></div>
+              <div class="info-card"><div class="info-icon">${icon("refresh")}</div><strong>Gateway Port</strong><span>${gatewayPort}</span></div>
+            </div>
           </section>
         </div>
       </main>
     </div>
     <script>
       const els = {
+        navItems: document.querySelectorAll(".nav-item"),
+        views: document.querySelectorAll(".view"),
         status: document.querySelector("#status"),
         deviceStatus: document.querySelector("#deviceStatus"),
         heroTitle: document.querySelector("#heroTitle"),
         heroMode: document.querySelector("#heroMode"),
         themeToggle: document.querySelector("#themeToggle"),
+        settingsTop: document.querySelector("#settingsTop"),
         start: document.querySelector("#start"),
         stop: document.querySelector("#stop"),
         refresh: document.querySelector("#refresh"),
@@ -1014,7 +1222,15 @@ function renderPage() {
         activeProject: document.querySelector("#activeProject"),
         mode: document.querySelector("#mode"),
         logs: document.querySelector("#logs"),
+        logsFull: document.querySelector("#logsFull"),
         clearLogs: document.querySelector("#clearLogs"),
+        clearLogsFull: document.querySelector("#clearLogsFull"),
+        refreshProjects: document.querySelector("#refreshProjects"),
+        projectDetails: document.querySelector("#projectDetails"),
+        settingsVersion: document.querySelector("#settingsVersion"),
+        settingsWorkspace: document.querySelector("#settingsWorkspace"),
+        settingsProject: document.querySelector("#settingsProject"),
+        settingsMode: document.querySelector("#settingsMode"),
       };
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
@@ -1023,6 +1239,10 @@ function renderPage() {
       els.start.addEventListener("click", () => post("/api/start"));
       els.stop.addEventListener("click", () => post("/api/stop"));
       els.refresh.addEventListener("click", refreshAll);
+      els.settingsTop.addEventListener("click", () => showView("settings"));
+      els.navItems.forEach((item) => {
+        item.addEventListener("click", () => showView(item.dataset.view));
+      });
       els.themeToggle.addEventListener("click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = next;
@@ -1051,6 +1271,13 @@ function renderPage() {
         await refreshAll();
       });
       els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
+      els.clearLogsFull.addEventListener("click", () => post("/api/logs/clear"));
+      els.refreshProjects.addEventListener("click", refreshAll);
+
+      function showView(name) {
+        els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === name));
+        els.views.forEach((view) => view.classList.toggle("active-view", view.id === "view-" + name));
+      }
 
       async function post(url, body) {
         const response = await fetch(url, {
@@ -1066,12 +1293,14 @@ function renderPage() {
       }
 
       async function refreshAll() {
-        const [status, projects] = await Promise.all([
+        const [status, projects, details] = await Promise.all([
           fetch("/api/status").then((r) => r.json()),
           fetch("/api/projects").then((r) => r.json()),
+          fetch("/api/projects/details").then((r) => r.json()),
         ]);
         renderStatus(status);
         renderProjects(projects);
+        renderProjectDetails(details);
       }
 
       function renderStatus(data) {
@@ -1087,8 +1316,15 @@ function renderPage() {
         els.workspace.textContent = data.workspaceRoot || "-";
         els.activeProject.textContent = data.defaultProject || "-";
         els.mode.textContent = data.permissionMode || "-";
-        els.logs.innerHTML = data.logs.map((item) => '<span class="log-line">●  ' + escapeHtml(item.time) + '  INFO</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text)).join("\\n");
+        els.settingsVersion.textContent = data.version || "-";
+        els.settingsWorkspace.textContent = data.workspaceRoot || "-";
+        els.settingsProject.textContent = data.defaultProject || "-";
+        els.settingsMode.textContent = data.permissionMode || "-";
+        const logHtml = data.logs.map((item) => '<span class="log-line">●  ' + escapeHtml(item.time) + '  INFO</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text)).join("\\n");
+        els.logs.innerHTML = logHtml;
+        els.logsFull.innerHTML = logHtml;
         els.logs.scrollTop = els.logs.scrollHeight;
+        els.logsFull.scrollTop = els.logsFull.scrollHeight;
       }
 
       function renderProjects(data) {
@@ -1101,6 +1337,42 @@ function renderPage() {
           option.selected = project === selected;
           els.projects.append(option);
         }
+      }
+
+      function renderProjectDetails(data) {
+        const projects = data.projects || [];
+        if (projects.length === 0) {
+          els.projectDetails.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ใน workspace</div>';
+          return;
+        }
+        els.projectDetails.innerHTML = projects.map((project) => {
+          const commit = project.latestCommit
+            ? escapeHtml(project.latestCommit.hash + " · " + project.latestCommit.message)
+            : "ยังไม่มี commit หรือไม่ใช่ git repo";
+          const dirty = project.dirty ? "มีไฟล์เปลี่ยนแปลง" : "clean";
+          const source = project.sourceUrl ? escapeHtml(project.sourceUrl) : "-";
+          return '<div class="project-card">'
+            + '<div>'
+            + '<div class="project-name">' + escapeHtml(project.name)
+            + ' <span class="badge">' + escapeHtml(project.kind) + '</span>'
+            + (project.active ? ' <span class="badge active-badge">active</span>' : '')
+            + '</div>'
+            + '<div class="hint">' + escapeHtml(project.description) + '</div>'
+            + '<div class="project-meta">'
+            + '<div><strong>ล่าสุด commit</strong>' + commit + '</div>'
+            + '<div><strong>สถานะ Git</strong>' + escapeHtml(dirty) + '</div>'
+            + '<div><strong>แหล่งที่มา</strong>' + source + '</div>'
+            + '</div>'
+            + '</div>'
+            + '<button data-project="' + escapeHtml(project.name) + '" class="set-project-inline">${icon("star")} ใช้โปรเจกต์นี้</button>'
+            + '</div>';
+        }).join("");
+        document.querySelectorAll(".set-project-inline").forEach((button) => {
+          button.addEventListener("click", async () => {
+            await post("/api/projects/default", { project: button.dataset.project });
+            await refreshAll();
+          });
+        });
       }
 
       function escapeHtml(value) {

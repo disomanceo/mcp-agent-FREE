@@ -1,5 +1,5 @@
 #define MyAppName "Personal MCP Agent"
-#define MyAppVersion "0.8.0"
+#define MyAppVersion "0.9.0"
 #define MyAppPublisher "disomanceo"
 #define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
 #define MyAppExeName "Personal MCP Agent.cmd"
@@ -23,6 +23,7 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupLogging=yes
+SetupIconFile=..\assets\app-icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -34,8 +35,8 @@ Name: "desktopicon"; Description: "Create a Desktop shortcut"; GroupDescription:
 Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".git\*,node_modules\*,dist-installer\*,audit\*,work-smoke\*,.vercel\*,apps\*\dist\*,packages\*\dist\*,apps\*\*.tsbuildinfo,packages\*\*.tsbuildinfo,unins*.dat,unins*.exe,.env,.env.*"
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"; Tasks: desktopicon
 Name: "{group}\Thai Quick Start Guide"; Filename: "{app}\docs\QUICKSTART-TH.md"
 Name: "{group}\Update Personal MCP Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\update.ps1"" -InstallDir ""{app}"""; WorkingDir: "{app}"
 

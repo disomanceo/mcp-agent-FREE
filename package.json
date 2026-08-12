@@ -1,6 +1,6 @@
 {
   "name": "personal-mcp-agent",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -30,6 +30,7 @@
     "demo:git": "node scripts/demo-git.mjs",
     "mcp:call": "node scripts/call-tool.mjs",
     "tunnel:ngrok": "node scripts/ngrok-tunnel.mjs",
+    "icon:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-icon.ps1",
     "installer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer.ps1",
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint .",

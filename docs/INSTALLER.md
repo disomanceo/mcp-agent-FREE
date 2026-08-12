@@ -64,6 +64,13 @@ npm run start:gui
 The GUI opens in your browser. Click `Start`, then copy the MCP URL shown on screen.
 The current version is shown in the left sidebar.
 
+The left sidebar opens real views:
+
+- Home: start/stop, MCP URL, active project
+- Projects: project list, type, description, git status, latest commit
+- Logs: launcher/gateway/agent/ngrok logs for the current session
+- Settings: version, workspace, active project, permission mode, ports
+
 The old terminal launcher is still available:
 
 ```powershell
