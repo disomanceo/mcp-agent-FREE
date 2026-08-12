@@ -14,6 +14,8 @@ const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
 const children = [];
 const logs = [];
+const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+const appVersion = packageJson.version ?? "0.0.0";
 
 let state = {
   phase: "stopped",
@@ -36,6 +38,7 @@ app.get("/api/status", async (_req, res) => {
     workspaceRoot: process.env.WORKSPACE_ROOT ?? "",
     defaultProject: process.env.DEFAULT_PROJECT ?? "",
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
+    version: appVersion,
     logs: logs.slice(-250),
   });
 });
@@ -85,6 +88,11 @@ app.post("/api/stop", (_req, res) => {
   cleanup();
   state = { ...state, phase: "stopped", mcpUrl: "", startedAt: null };
   log("launcher", "Stopped Gateway, Agent, and ngrok.");
+  res.json({ ok: true });
+});
+
+app.post("/api/logs/clear", (_req, res) => {
+  logs.splice(0);
   res.json({ ok: true });
 });
 
@@ -502,6 +510,40 @@ function messageOf(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function icon(name) {
+  const icons = {
+    bot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="12" height="10" rx="3"/><path d="M12 4v4"/><path d="M8.5 13h.01"/><path d="M15.5 13h.01"/><path d="M9 18v2h6v-2"/></svg>',
+    check:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="M12 12 4.5 7.7"/><path d="M12 12v8.5"/><path d="m12 12 7.5-4.3"/><path d="m8.5 5.5 7 4"/></svg>',
+    file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>',
+    filter:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.5V20l4-2v-5.5L22 3Z"/></svg>',
+    folder:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+    home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
+    monitor:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16l14-8Z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+    refresh:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/></svg>',
+    settings:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05a2.1 2.1 0 1 1-2.97 2.97l-.05-.05A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.08 1.64V21a2.1 2.1 0 1 1-4.2 0v-.08A1.8 1.8 0 0 0 8.45 19.3a1.8 1.8 0 0 0-1.98.36l-.05.05a2.1 2.1 0 1 1-2.97-2.97l.05-.05A1.8 1.8 0 0 0 3.86 14.7a1.8 1.8 0 0 0-1.64-1.08H2a2.1 2.1 0 1 1 0-4.2h.08A1.8 1.8 0 0 0 3.7 8.35a1.8 1.8 0 0 0-.36-1.98l-.05-.05A2.1 2.1 0 1 1 6.26 3.35l.05.05A1.8 1.8 0 0 0 8.3 3.76h.1A1.8 1.8 0 0 0 9.48 2.1V2a2.1 2.1 0 1 1 4.2 0v.08a1.8 1.8 0 0 0 1.08 1.64 1.8 1.8 0 0 0 1.98-.36l.05-.05a2.1 2.1 0 1 1 2.97 2.97l-.05.05A1.8 1.8 0 0 0 19.36 8.3v.1A1.8 1.8 0 0 0 21 9.48H21a2.1 2.1 0 1 1 0 4.2h-.08A1.8 1.8 0 0 0 19.4 15Z"/></svg>',
+    shield:
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 20 5.5v6.2c0 5.1-3.4 8.8-8 10.3-4.6-1.5-8-5.2-8-10.3V5.5L12 2Zm3.7 7.6-4.8 4.8-2.1-2.1-1.4 1.4 3.5 3.5 6.2-6.2-1.4-1.4Z"/></svg>',
+    square:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/></svg>',
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    trash:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>',
+  };
+  return icons[name] ?? "";
+}
+
 function renderPage() {
   return `<!doctype html>
 <html lang="th">
@@ -512,76 +554,278 @@ function renderPage() {
     <style>
       :root {
         color-scheme: light;
-        --bg: #f6f7f9;
+        --app-bg: #f4f7fb;
+        --sidebar: #071a3b;
+        --sidebar-2: #0c2f6d;
+        --sidebar-text: #f5f8ff;
+        --sidebar-muted: #9fb4d9;
         --panel: #ffffff;
-        --ink: #1d2433;
-        --muted: #647084;
-        --line: #d9dee7;
-        --green: #10845b;
-        --red: #bd2d2d;
-        --blue: #1d5fd0;
+        --panel-soft: #f8fbff;
+        --ink: #13213b;
+        --muted: #62708a;
+        --line: #dbe3ef;
+        --shadow: 0 14px 36px rgba(31, 52, 91, 0.10);
+        --green: #1ebd72;
+        --green-2: #11945a;
+        --red: #e94b55;
+        --blue: #2463eb;
+        --blue-2: #1749bd;
+        --purple: #9347e8;
+        --log-bg: #071735;
+        --log-ink: #dce8ff;
+      }
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --app-bg: #08111f;
+        --sidebar: #030b18;
+        --sidebar-2: #10275a;
+        --sidebar-text: #f5f8ff;
+        --sidebar-muted: #8fa3c4;
+        --panel: #101c2e;
+        --panel-soft: #0d1727;
+        --ink: #edf4ff;
+        --muted: #a9b8d0;
+        --line: #243550;
+        --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        --log-bg: #030712;
+        --log-ink: #dbeafe;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        background: var(--bg);
+        min-height: 100vh;
+        background: var(--app-bg);
         color: var(--ink);
         font-family: "Segoe UI", Arial, sans-serif;
       }
-      header {
+      .app-shell {
+        display: grid;
+        grid-template-columns: 292px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 22px 18px;
+        background:
+          radial-gradient(circle at 20% 0%, rgba(46, 99, 235, 0.42), transparent 30%),
+          linear-gradient(180deg, var(--sidebar), #061327 58%, #07162f);
+        color: var(--sidebar-text);
+      }
+      .brand {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 18px 24px;
-        border-bottom: 1px solid var(--line);
-        background: var(--panel);
+        gap: 12px;
+        min-height: 44px;
+        margin-bottom: 34px;
       }
-      h1 { margin: 0; font-size: 20px; font-weight: 650; }
-      main {
-        max-width: 1120px;
-        margin: 0 auto;
-        padding: 24px;
+      .brand-mark {
+        width: 44px;
+        height: 44px;
         display: grid;
-        gap: 16px;
+        place-items: center;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #3478ff, #2146c7);
+        box-shadow: 0 12px 28px rgba(36, 99, 235, 0.38);
+      }
+      .brand-title { font-size: 18px; font-weight: 750; letter-spacing: 0; }
+      .brand-version {
+        color: var(--sidebar-muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .nav {
+        display: grid;
+        gap: 10px;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 56px;
+        padding: 0 16px;
+        border-radius: 8px;
+        color: var(--sidebar-muted);
+        font-weight: 650;
+      }
+      .nav-item.active {
+        color: #fff;
+        background: linear-gradient(135deg, #2563eb, #1c4fc7);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+      }
+      .device-card {
+        margin-top: auto;
+        padding: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .device-card strong { display: block; margin-bottom: 6px; }
+      .device-card span { color: #4ade80; font-size: 14px; }
+      .content {
+        min-width: 0;
+        padding: 24px 28px;
+      }
+      .topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.1;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       section {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 8px;
-        padding: 16px;
+        box-shadow: var(--shadow);
       }
+      .card { padding: 18px; }
+      .hero-card {
+        min-height: 174px;
+        display: grid;
+        grid-template-columns: 178px minmax(0, 1fr);
+        align-items: center;
+        gap: 24px;
+        padding: 26px 28px;
+        margin-bottom: 14px;
+      }
+      .agent-orb {
+        width: 132px;
+        height: 132px;
+        display: grid;
+        place-items: center;
+        border: 9px solid rgba(30, 189, 114, 0.3);
+        border-top-color: var(--green);
+        border-right-color: var(--green);
+        border-radius: 50%;
+        background: var(--panel-soft);
+      }
+      .robot {
+        width: 54px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #24c37a, #108452);
+        color: white;
+      }
+      .hero-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 10px;
+        font-size: 26px;
+        font-weight: 800;
+      }
+      .hero-subtitle {
+        margin-bottom: 18px;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .stack { display: grid; gap: 14px; }
       .grid {
         display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
-        gap: 16px;
+        grid-template-columns: 1fr 1.05fr;
+        gap: 14px;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
       }
       .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
       .column { display: grid; gap: 10px; }
-      .title { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+      .title {
+        font-size: 17px;
+        color: var(--ink);
+        font-weight: 800;
+        margin-bottom: 12px;
+      }
       .status {
         display: inline-flex;
         align-items: center;
+        gap: 8px;
         min-height: 32px;
-        padding: 0 12px;
-        border-radius: 999px;
-        background: #eceff4;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
         font-weight: 600;
       }
-      .status.ready { background: #dff6eb; color: var(--green); }
-      .status.error { background: #ffe6e6; color: var(--red); }
+      .status::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .status.ready { color: var(--green-2); }
+      .status.ready::before { background: var(--green); }
+      .status.error { color: var(--red); }
+      .status.error::before { background: var(--red); }
       button, select, input {
         min-height: 38px;
         border: 1px solid var(--line);
         border-radius: 7px;
-        background: #fff;
+        background: var(--panel);
         color: var(--ink);
         font: inherit;
         padding: 0 12px;
       }
-      button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
-      button.danger { color: var(--red); }
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.primary {
+        min-width: 154px;
+        background: linear-gradient(135deg, #2f6df6, var(--blue-2));
+        border-color: var(--blue);
+        color: #fff;
+        box-shadow: 0 10px 22px rgba(36, 99, 235, 0.24);
+      }
+      button.danger {
+        min-width: 120px;
+        color: var(--red);
+        border-color: rgba(233, 75, 85, 0.62);
+      }
+      button.icon-btn {
+        width: 52px;
+        min-width: 52px;
+        padding: 0;
+      }
+      button.copy-done {
+        color: var(--green-2);
+        border-color: rgba(30, 189, 114, 0.45);
+        background: rgba(30, 189, 114, 0.08);
+      }
       button:disabled { opacity: 0.55; cursor: not-allowed; }
-      select { min-width: 230px; }
+      select { flex: 1; min-width: 240px; }
       input { flex: 1; min-width: 300px; }
       .url {
         flex: 1;
@@ -589,103 +833,178 @@ function renderPage() {
         padding: 10px 12px;
         border: 1px solid var(--line);
         border-radius: 7px;
-        background: #f9fafc;
+        background: var(--panel-soft);
         font-family: Consolas, "Courier New", monospace;
         overflow-wrap: anywhere;
       }
-      .meta {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
-      }
-      .meta div {
+      .info-card {
         border: 1px solid var(--line);
         border-radius: 7px;
-        padding: 10px;
-        min-height: 70px;
+        padding: 18px;
+        min-height: 138px;
+        background: var(--panel-soft);
       }
-      .meta strong { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+      .info-icon {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 22px;
+        color: var(--blue);
+      }
+      .info-card strong {
+        display: block;
+        font-size: 14px;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .info-card span { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+      .logs-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
       pre {
-        height: 300px;
+        height: 220px;
         margin: 0;
         overflow: auto;
-        padding: 12px;
+        padding: 16px 18px;
         border-radius: 7px;
-        background: #101622;
-        color: #dbe7ff;
+        background: var(--log-bg);
+        color: var(--log-ink);
         font: 12px/1.45 Consolas, "Courier New", monospace;
         white-space: pre-wrap;
       }
       .hint { color: var(--muted); font-size: 13px; }
-      @media (max-width: 820px) {
-        .grid, .meta { grid-template-columns: 1fr; }
+      .log-line { color: #64e48f; }
+      svg { width: 20px; height: 20px; flex: 0 0 auto; }
+      @media (max-width: 980px) {
+        .app-shell { grid-template-columns: 1fr; }
+        .sidebar { position: relative; height: auto; }
+        .hero-card, .grid, .info-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 640px) {
+        .content { padding: 18px; }
+        .topbar { display: grid; }
+        h1 { font-size: 25px; }
+        .hero-card { padding: 20px; }
+        input, select { min-width: 100%; }
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Personal MCP Agent</h1>
-      <span id="status" class="status">Stopped</span>
-    </header>
-    <main>
-      <section>
-        <div class="title">ควบคุมการทำงาน</div>
-        <div class="row">
-          <button id="start" class="primary">Start</button>
-          <button id="stop" class="danger">Stop</button>
-          <button id="refresh">Refresh</button>
-        </div>
-      </section>
-
-      <section>
-        <div class="title">MCP URL สำหรับ ChatGPT</div>
-        <div class="row">
-          <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
-          <button id="copy">Copy</button>
-        </div>
-        <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
-      </section>
-
-      <div class="grid">
-        <section>
-          <div class="title">โปรเจกต์</div>
-          <div class="row">
-            <select id="projects"></select>
-            <button id="setProject">Set Active Project</button>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">${icon("cube")}</div>
+          <div>
+            <div class="brand-title">Personal MCP Agent</div>
+            <div class="brand-version">Version ${appVersion}</div>
           </div>
-          <p class="hint">โปรเจกต์ต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
-          <div class="column" style="margin-top: 14px">
-            <div class="title">Add Project from URL</div>
+        </div>
+        <nav class="nav">
+          <div class="nav-item active">${icon("home")} หน้าหลัก</div>
+          <div class="nav-item">${icon("folder")} โปรเจกต์</div>
+          <div class="nav-item">${icon("file")} บันทึกการทำงาน</div>
+          <div class="nav-item">${icon("settings")} ตั้งค่า</div>
+        </nav>
+        <div class="device-card">
+          <div class="row">${icon("monitor")} <strong>Windows Desktop</strong></div>
+          <span id="deviceStatus">ยังไม่ได้เชื่อมต่อ</span>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="topbar">
+          <div>
+            <h1>ศูนย์ควบคุม Agent</h1>
+            <div class="subtitle">ควบคุมการทำงานของ Personal MCP Agent และจัดการการเชื่อมต่อ</div>
+          </div>
+          <div class="top-actions">
+            <span id="status" class="status">Stopped</span>
+            <button id="themeToggle" class="icon-btn" title="สลับโหมดสว่าง/มืด">${icon("sun")}</button>
+            <button class="icon-btn" title="ตั้งค่า">${icon("settings")}</button>
+          </div>
+        </div>
+
+        <section class="hero-card">
+          <div class="agent-orb"><div class="robot">${icon("bot")}</div></div>
+          <div>
+            <h2 class="hero-title"><span id="heroTitle">Agent ยังไม่ทำงาน</span> ${icon("shield")}</h2>
+            <div class="hero-subtitle">Windows Desktop Agent <span aria-hidden="true">•</span> <span id="heroMode">WORK mode</span></div>
             <div class="row">
-              <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
-              <button id="addProjectUrl">Add URL</button>
+              <button id="start" class="primary">${icon("play")} เริ่มทำงาน</button>
+              <button id="stop" class="danger">${icon("square")} หยุด</button>
+              <button id="refresh">${icon("refresh")} รีเฟรช</button>
             </div>
-            <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
           </div>
         </section>
 
-        <section>
-          <div class="title">สถานะ</div>
-          <div class="meta">
-            <div><strong>Workspace</strong><span id="workspace"></span></div>
-            <div><strong>Active Project</strong><span id="activeProject"></span></div>
-            <div><strong>Mode</strong><span id="mode"></span></div>
-          </div>
-        </section>
-      </div>
+        <div class="stack">
+          <section class="card">
+            <div class="title">MCP URL สำหรับ ChatGPT</div>
+            <div class="row">
+              <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
+              <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
+            </div>
+            <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
+          </section>
 
-      <section>
-        <div class="title">Logs</div>
-        <pre id="logs"></pre>
-      </section>
-    </main>
+          <div class="grid">
+            <section class="card">
+              <div class="title">โปรเจกต์ที่ใช้งาน</div>
+              <div class="row">
+                <select id="projects"></select>
+                <button id="setProject">${icon("star")} ตั้งเป็นโปรเจกต์หลัก</button>
+              </div>
+              <p class="hint">โปรเจกต์ที่ดีต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
+              <div class="column" style="margin-top: 16px">
+                <div class="title">เพิ่มโปรเจกต์จาก URL</div>
+                <div class="row">
+                  <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
+                  <button id="addProjectUrl">${icon("plus")} เพิ่ม URL</button>
+                </div>
+                <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="title">ข้อมูลระบบ</div>
+              <div class="info-grid">
+                <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
+                <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
+                <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="logs-head">
+              <div class="title" style="margin:0">บันทึกการทำงาน</div>
+              <div class="row">
+                <button id="logFilter">${icon("filter")} ทั้งหมด</button>
+                <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
+              </div>
+            </div>
+            <pre id="logs"></pre>
+          </section>
+        </div>
+      </main>
+    </div>
     <script>
       const els = {
         status: document.querySelector("#status"),
+        deviceStatus: document.querySelector("#deviceStatus"),
+        heroTitle: document.querySelector("#heroTitle"),
+        heroMode: document.querySelector("#heroMode"),
+        themeToggle: document.querySelector("#themeToggle"),
         start: document.querySelector("#start"),
         stop: document.querySelector("#stop"),
         refresh: document.querySelector("#refresh"),
         copy: document.querySelector("#copy"),
+        copyText: document.querySelector("#copyText"),
         url: document.querySelector("#url"),
         projects: document.querySelector("#projects"),
         projectUrl: document.querySelector("#projectUrl"),
@@ -695,14 +1014,32 @@ function renderPage() {
         activeProject: document.querySelector("#activeProject"),
         mode: document.querySelector("#mode"),
         logs: document.querySelector("#logs"),
+        clearLogs: document.querySelector("#clearLogs"),
       };
+
+      const savedTheme = localStorage.getItem("pma-theme") || "light";
+      document.documentElement.dataset.theme = savedTheme;
 
       els.start.addEventListener("click", () => post("/api/start"));
       els.stop.addEventListener("click", () => post("/api/stop"));
       els.refresh.addEventListener("click", refreshAll);
+      els.themeToggle.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem("pma-theme", next);
+      });
       els.copy.addEventListener("click", async () => {
         const text = els.url.textContent.trim();
-        if (text.startsWith("https://")) await navigator.clipboard.writeText(text);
+        if (!text.startsWith("https://")) return;
+        await navigator.clipboard.writeText(text);
+        els.copy.classList.add("copy-done");
+        els.copyText.textContent = "คัดลอกแล้ว";
+        els.copy.querySelector("svg").outerHTML = '${icon("check").replaceAll("'", "\\'")}';
+        setTimeout(() => {
+          els.copy.classList.remove("copy-done");
+          els.copyText.textContent = "คัดลอก";
+          els.copy.querySelector("svg").outerHTML = '${icon("copy").replaceAll("'", "\\'")}';
+        }, 1600);
       });
       els.setProject.addEventListener("click", async () => {
         await post("/api/projects/default", { project: els.projects.value });
@@ -713,6 +1050,7 @@ function renderPage() {
         els.projectUrl.value = "";
         await refreshAll();
       });
+      els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
 
       async function post(url, body) {
         const response = await fetch(url, {
@@ -738,15 +1076,18 @@ function renderPage() {
 
       function renderStatus(data) {
         const label = data.phase === "ready" ? "Ready" : data.phase === "starting" ? "Starting" : data.phase === "error" ? "Error" : "Stopped";
-        els.status.textContent = label;
+        els.status.textContent = data.phase === "ready" ? "เชื่อมต่อแล้ว" : data.phase === "starting" ? "กำลังเริ่ม" : data.phase === "error" ? "มีข้อผิดพลาด" : "ยังไม่เชื่อมต่อ";
         els.status.className = "status " + (data.phase === "ready" ? "ready" : data.phase === "error" ? "error" : "");
+        els.deviceStatus.textContent = data.agentOnline ? "เชื่อมต่อแล้ว" : "ยังไม่ได้เชื่อมต่อ";
+        els.heroTitle.textContent = data.phase === "ready" ? "Agent พร้อมทำงาน" : data.phase === "starting" ? "Agent กำลังเริ่ม" : data.phase === "error" ? "Agent ต้องตรวจสอบ" : "Agent ยังไม่ทำงาน";
+        els.heroMode.textContent = (data.permissionMode || "SAFE") + " mode";
         els.start.disabled = data.phase === "starting" || data.phase === "ready";
         els.stop.disabled = data.phase === "stopped";
         els.url.textContent = data.mcpUrl || "ยังไม่มี URL ให้กด Start ก่อน";
         els.workspace.textContent = data.workspaceRoot || "-";
         els.activeProject.textContent = data.defaultProject || "-";
         els.mode.textContent = data.permissionMode || "-";
-        els.logs.textContent = data.logs.map((item) => "[" + item.time + "] [" + item.label + "] " + item.text).join("\\n");
+        els.logs.innerHTML = data.logs.map((item) => '<span class="log-line">●  ' + escapeHtml(item.time) + '  INFO</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text)).join("\\n");
         els.logs.scrollTop = els.logs.scrollHeight;
       }
 
@@ -760,6 +1101,16 @@ function renderPage() {
           option.selected = project === selected;
           els.projects.append(option);
         }
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[char]);
       }
 
       refreshAll();

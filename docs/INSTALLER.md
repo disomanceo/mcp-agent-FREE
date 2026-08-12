@@ -62,6 +62,7 @@ npm run start:gui
 ```
 
 The GUI opens in your browser. Click `Start`, then copy the MCP URL shown on screen.
+The current version is shown in the left sidebar.
 
 The old terminal launcher is still available:
 

@@ -9,6 +9,7 @@
 - เวลาใช้งาน ให้เปิด shortcut ชื่อ `Personal MCP Agent` บน Desktop
 - โปรแกรมจะโชว์ URL ที่ลงท้ายด้วย `/mcp`
 - เอา URL นั้นไปใส่ใน ChatGPT ที่เมนู MCP / ตัวเชื่อมต่อ
+- เลข Version จะแสดงใน sidebar ด้านซ้ายของหน้า GUI
 
 ## 1. เปิดใช้งาน
 
