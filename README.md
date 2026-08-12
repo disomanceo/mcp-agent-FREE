@@ -134,6 +134,8 @@ irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/insta
 
 คู่มือใช้งานแบบง่ายภาษาไทยหลังติดตั้ง: [docs/QUICKSTART-TH.md](docs/QUICKSTART-TH.md)
 
+สำหรับผู้ใช้ทั่วไป สามารถดาวน์โหลดตัวติดตั้ง `setup.exe` ได้จาก [GitHub Releases](https://github.com/disomanceo/personal-mcp-agent/releases/latest)
+
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.

@@ -20,6 +20,32 @@ The installer will:
 - check/install ngrok when possible
 - create a Desktop shortcut named `Personal MCP Agent`
 
+## Setup.exe installer
+
+For non-technical users, the easiest option is the Windows setup file from GitHub Releases:
+
+[Latest release](https://github.com/disomanceo/personal-mcp-agent/releases/latest)
+
+Download the file named like:
+
+```text
+PersonalMCPAgent-Setup-x.x.x.exe
+```
+
+Then double-click it and follow the installer. The setup creates the same Desktop shortcut named `Personal MCP Agent`.
+
+Developers can build the setup file locally with:
+
+```powershell
+npm run installer:build
+```
+
+This requires Inno Setup:
+
+```powershell
+winget install --id JRSoftware.InnoSetup -e
+```
+
 ## Start the app
 
 Double-click:

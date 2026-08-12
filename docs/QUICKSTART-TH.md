@@ -32,6 +32,8 @@ cd D:\personal-mcp-agent
 npm run start:chatgpt
 ```
 
+ถ้าติดตั้งจากไฟล์ `setup.exe` ให้ใช้งานเหมือนกัน คือเปิดจาก shortcut `Personal MCP Agent` บน Desktop
+
 ## 2. เอา URL ไปใส่ใน ChatGPT
 
 ใน ChatGPT ภาษาไทย ให้ไปที่หน้าจัดการ MCP / ตัวเชื่อมต่อแบบกำหนดเอง แล้วใส่ข้อมูลประมาณนี้:

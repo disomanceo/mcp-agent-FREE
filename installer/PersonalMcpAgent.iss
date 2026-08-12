@@ -1,0 +1,43 @@
+#define MyAppName "Personal MCP Agent"
+#define MyAppVersion "0.5.0"
+#define MyAppPublisher "disomanceo"
+#define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
+#define MyAppExeName "Personal MCP Agent.cmd"
+
+[Setup]
+AppId={{8F04D4F0-980E-4F76-9D6B-F6D56DD4C38D}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}
+AppUpdatesURL={#MyAppURL}
+DefaultDirName=D:\personal-mcp-agent
+DefaultGroupName={#MyAppName}
+AllowNoIcons=yes
+OutputDir=..\dist-installer
+OutputBaseFilename=PersonalMCPAgent-Setup-{#MyAppVersion}
+Compression=lzma
+SolidCompression=yes
+WizardStyle=modern
+PrivilegesRequired=lowest
+ArchitecturesInstallIn64BitMode=x64compatible
+SetupLogging=yes
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a Desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
+
+[Files]
+Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".git\*,node_modules\*,dist-installer\*,audit\*,work-smoke\*,.vercel\*,apps\*\dist\*,packages\*\dist\*,apps\*\*.tsbuildinfo,packages\*\*.tsbuildinfo,.env,.env.*"
+
+[Icons]
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\Thai Quick Start Guide"; Filename: "{app}\docs\QUICKSTART-TH.md"
+Name: "{group}\Update Personal MCP Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\update.ps1"" -InstallDir ""{app}"""; WorkingDir: "{app}"
+
+[Run]
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\post-install.ps1"" -InstallDir ""{app}"" -WorkspaceRoot ""D:\AI-Workspace"""; WorkingDir: "{app}"; Description: "Install dependencies and configure Personal MCP Agent"; Flags: postinstall waituntilterminated
