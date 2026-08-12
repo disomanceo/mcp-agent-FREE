@@ -87,6 +87,12 @@ npm run mcp:call -- read_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT
 npm run demo:work -- TravelTank300
 ```
 
+เปิด tunnel ผ่าน ngrok สำหรับ ChatGPT:
+
+```powershell
+npm run tunnel:ngrok
+```
+
 ถ้าต้องการดู git status ให้ทำให้ sample project เป็น git repo ก่อน:
 
 ```powershell

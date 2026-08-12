@@ -50,6 +50,21 @@ curl http://127.0.0.1:8787/health
 curl http://127.0.0.1:8787/api/devices
 ```
 
+Terminal 3, for ngrok testing:
+
+```powershell
+cd D:\personal-mcp-agent
+npm run tunnel:ngrok
+```
+
+Copy the `Forwarding` HTTPS URL from ngrok and append `/mcp`.
+
+Example:
+
+```text
+https://example.ngrok-free.app/mcp
+```
+
 ## Test write locally before connecting ChatGPT
 
 ```powershell
