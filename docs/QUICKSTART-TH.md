@@ -16,20 +16,22 @@
 
 1. ไปที่ Desktop
 2. ดับเบิลคลิก `Personal MCP Agent`
-3. รอจนหน้าต่างแสดงบรรทัดประมาณนี้:
+3. ระบบจะเปิดหน้า GUI ใน browser
+4. กดปุ่ม `Start`
+5. รอจนหน้าจอแสดง URL ประมาณนี้:
 
 ```text
 MCP URL: https://xxxxx.ngrok-free.app/mcp
 ```
 
-4. คัดลอก URL ทั้งบรรทัดที่ขึ้นต้นด้วย `https://` และลงท้ายด้วย `/mcp`
-5. เปิด ChatGPT แล้วนำ URL นี้ไปใส่ใน MCP server URL
+6. กดปุ่ม `Copy`
+7. เปิด ChatGPT แล้วนำ URL นี้ไปใส่ใน MCP server URL
 
 ถ้าไม่อยากใช้ shortcut ให้เปิด PowerShell แล้วรัน:
 
 ```powershell
 cd D:\personal-mcp-agent
-npm run start:chatgpt
+npm run start:gui
 ```
 
 ถ้าติดตั้งจากไฟล์ `setup.exe` ให้ใช้งานเหมือนกัน คือเปิดจาก shortcut `Personal MCP Agent` บน Desktop
@@ -85,6 +87,16 @@ npm run project:list
 ระบบจะแสดงรายชื่อโฟลเดอร์ใต้ `D:\AI-Workspace`
 
 ## 5. เปลี่ยนโปรเจกต์หลัก
+
+วิธีง่ายสุดคือเปลี่ยนจากหน้า GUI:
+
+1. เปิด `Personal MCP Agent`
+2. เลือกโปรเจกต์จาก dropdown
+3. กด `Set Active Project`
+4. กด `Stop`
+5. กด `Start` ใหม่
+
+หรือใช้ PowerShell:
 
 ตัวอย่าง ถ้าต้องการเปลี่ยนไปใช้ `TravelTank300`:
 

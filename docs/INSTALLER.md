@@ -58,10 +58,19 @@ Or run:
 
 ```powershell
 cd D:\personal-mcp-agent
+npm run start:gui
+```
+
+The GUI opens in your browser. Click `Start`, then copy the MCP URL shown on screen.
+
+The old terminal launcher is still available:
+
+```powershell
+cd D:\personal-mcp-agent
 npm run start:chatgpt
 ```
 
-The launcher prints:
+Both launchers show:
 
 ```text
 MCP URL: https://xxxxx.ngrok-free.app/mcp
@@ -76,6 +85,10 @@ For a simple step-by-step guide after installation, read:
 [QUICKSTART-TH.md](QUICKSTART-TH.md)
 
 ## Change project
+
+In the GUI, choose a project from the dropdown and click `Set Active Project`.
+
+Or use PowerShell:
 
 ```powershell
 cd D:\personal-mcp-agent

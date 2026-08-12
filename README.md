@@ -115,10 +115,16 @@ npm run smoke
 
 ```powershell
 cd D:\personal-mcp-agent
-npm run start:chatgpt
+npm run start:gui
 ```
 
 หรือดับเบิลคลิก `Personal MCP Agent.cmd`
+
+ถ้าต้องการใช้ launcher แบบ terminal เดิม:
+
+```powershell
+npm run start:chatgpt
+```
 
 ## Windows App-like Installer
 

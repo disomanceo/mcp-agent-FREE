@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-npm run start:chatgpt
+npm run start:gui
 pause

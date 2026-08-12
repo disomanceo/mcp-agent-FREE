@@ -1,6 +1,6 @@
 {
   "name": "personal-mcp-agent",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -23,6 +23,7 @@
     "project:set": "node scripts/project-set.mjs",
     "mode:safe": "node scripts/set-mode.mjs SAFE",
     "mode:work": "node scripts/set-mode.mjs WORK",
+    "start:gui": "node scripts/gui-launcher.mjs",
     "start:chatgpt": "node scripts/start-chatgpt.mjs",
     "demo:local": "node scripts/demo-local.mjs",
     "demo:work": "node scripts/demo-work.mjs",

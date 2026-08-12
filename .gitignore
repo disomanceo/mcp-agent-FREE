@@ -9,6 +9,8 @@ coverage/
 audit/*.jsonl
 work-smoke/
 dist-installer/
+unins*.dat
+unins*.exe
 
 .vercel
 .env*
