@@ -8,3 +8,6 @@ coverage/
 *.tsbuildinfo
 audit/*.jsonl
 work-smoke/
+
+.vercel
+.env*

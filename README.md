@@ -106,3 +106,14 @@ npm run smoke
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.
+
+## Vercel Project
+
+This repository is linked to a new Vercel project:
+
+```text
+Vercel Project: disomanceo/personal-mcp-agent
+GitHub Repo: https://github.com/disomanceo/personal-mcp-agent
+```
+
+Important: the Phase 1 Gateway uses a long-lived WebSocket connection to the Desktop Agent. Vercel Functions are not the right runtime for that WebSocket relay by themselves. For full cloud operation, run the Gateway on a persistent WebSocket-capable host, or use Vercel for HTTP/MCP-facing pieces and a separate relay service for Desktop Agent WebSockets.
