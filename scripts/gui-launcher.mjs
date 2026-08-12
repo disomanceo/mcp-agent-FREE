@@ -206,18 +206,27 @@ async function startAll() {
     throw new Error("Build failed. See logs below.");
   }
 
-  startChild("gateway", process.execPath, ["apps/gateway/dist/index.js"]);
-  startChild("agent", process.execPath, ["apps/desktop-agent/dist/index.js"]);
+  const gateway = startChild("gateway", process.execPath, ["apps/gateway/dist/index.js"]);
+  await waitUntil(
+    gatewayHealthy,
+    "Gateway did not become healthy.",
+    () => childExitError(gateway, "Gateway"),
+  );
+
+  const agent = startChild("agent", process.execPath, ["apps/desktop-agent/dist/index.js"]);
+  await waitUntil(
+    agentOnline,
+    "Desktop Agent did not connect.",
+    () => childExitError(agent, "Desktop Agent"),
+  );
 
   const ngrokPath = findNgrok();
   if (!ngrokPath) {
     throw new Error("ngrok.exe not found. Install ngrok first, then retry.");
   }
-  startChild("ngrok", ngrokPath, ["http", gatewayPort]);
+  const ngrok = startChild("ngrok", ngrokPath, ["http", gatewayPort]);
 
-  await waitUntil(gatewayHealthy, "Gateway did not become healthy.");
-  await waitUntil(agentOnline, "Desktop Agent did not connect.");
-  const publicUrl = await waitForNgrokUrl();
+  const publicUrl = await waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
 
   state.phase = "ready";
   state.mcpUrl = `${publicUrl}/mcp`;
@@ -231,14 +240,24 @@ function startChild(label, command, args) {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
+  child.lastOutput = "";
+  child.exitCodeSeen = null;
   children.push(child);
-  child.stdout.on("data", (chunk) => log(label, chunk.toString().trimEnd()));
-  child.stderr.on("data", (chunk) => log(label, chunk.toString().trimEnd()));
+  child.stdout.on("data", (chunk) => {
+    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
+    log(label, chunk.toString().trimEnd());
+  });
+  child.stderr.on("data", (chunk) => {
+    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
+    log(label, chunk.toString().trimEnd());
+  });
   child.on("exit", (code) => {
+    child.exitCodeSeen = code ?? 0;
     if (state.phase !== "stopped") {
       log(label, `Exited with code ${code ?? 0}`);
     }
   });
+  return child;
 }
 
 function cleanup() {
@@ -272,8 +291,10 @@ async function agentOnline() {
   }
 }
 
-async function waitForNgrokUrl() {
+async function waitForNgrokUrl(exitError) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    const failure = exitError?.();
+    if (failure) throw failure;
     try {
       const response = await fetch(ngrokApi);
       const data = await response.json();
@@ -288,12 +309,20 @@ async function waitForNgrokUrl() {
   throw new Error("ngrok did not expose a public HTTPS URL.");
 }
 
-async function waitUntil(check, errorMessage) {
+async function waitUntil(check, errorMessage, exitError) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    const failure = exitError?.();
+    if (failure) throw failure;
     if (await check()) return;
     await delay(500);
   }
   throw new Error(errorMessage);
+}
+
+function childExitError(child, label) {
+  if (child.exitCodeSeen === null || child.exitCodeSeen === undefined) return null;
+  const detail = child.lastOutput ? ` Last output: ${child.lastOutput}` : "";
+  return new Error(`${label} exited with code ${child.exitCodeSeen}.${detail}`);
 }
 
 function delay(ms) {
