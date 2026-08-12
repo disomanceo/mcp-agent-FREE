@@ -14,6 +14,7 @@ const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
 const children = [];
 const logs = [];
+const projectEvents = [];
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
 const appVersion = packageJson.version ?? "0.0.0";
 
@@ -85,6 +86,16 @@ app.post("/api/projects/from-url", (req, res) => {
   try {
     const url = String(req.body?.url ?? "");
     const result = addProjectFromUrl(url);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/projects/delete", (req, res) => {
+  try {
+    const project = String(req.body?.project ?? "");
+    const result = deleteProject(project);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: messageOf(error) });
@@ -318,6 +329,7 @@ function projectDetails(workspaceRoot, name) {
   const metadata = readJson(path.join(projectPath, ".personal-mcp", "project.json"));
   const packageJson = readJson(path.join(projectPath, "package.json"));
   const readmeSummary = readReadmeSummary(projectPath);
+  const docs = readProjectDocs(projectPath);
   const isGit = fs.existsSync(path.join(projectPath, ".git"));
   const latestCommit = isGit
     ? gitSummary(projectPath, ["log", "-1", "--pretty=format:%h|%ci|%s"])
@@ -345,6 +357,8 @@ function projectDetails(workspaceRoot, name) {
     gitStatus: gitStatus.trim(),
     remote: remote.trim(),
     sourceUrl: metadata?.displayUrl ?? metadata?.sourceUrl ?? remote.trim(),
+    docs,
+    events: recentProjectEvents(name),
   };
 }
 
@@ -368,6 +382,32 @@ function readReadmeSummary(projectPath) {
     if (line) return line.slice(0, 180);
   }
   return "";
+}
+
+function readProjectDocs(projectPath) {
+  return {
+    readme: readDocPreview(projectPath, ["README.md", "readme.md"]),
+    todo: readDocPreview(projectPath, ["TODO.md", "todo.md"]),
+  };
+}
+
+function readDocPreview(projectPath, fileNames) {
+  for (const fileName of fileNames) {
+    const filePath = path.join(projectPath, fileName);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
+    const text = fs
+      .readFileSync(filePath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^#+\s*/, "").trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" · ");
+    return {
+      file: fileName,
+      text: text.slice(0, 320),
+    };
+  }
+  return null;
 }
 
 function gitSummary(cwd, args) {
@@ -436,6 +476,7 @@ function gitCommitFromGui({ project, files, message }) {
 
   const hash = gitSummary(projectPath, ["rev-parse", "--short", "HEAD"]).trim();
   log("git", `Committed ${hash}: ${message.trim()}`);
+  markProjectEvent(project, "git", `Commit ${hash}`);
   return { ok: true, hash, output: commit.stdout.trim() };
 }
 
@@ -464,6 +505,7 @@ function gitPushFromGui(project) {
     throw new Error(push.stderr || push.stdout || "git push failed");
   }
   log("git", `Pushed ${project} to ${upstream}`);
+  markProjectEvent(project, "github", `Pushed to ${upstream}`);
   return { ok: true, upstream, output: `${push.stdout}\n${push.stderr}`.trim() };
 }
 
@@ -490,6 +532,7 @@ function deployVercelFromGui(project) {
     throw new Error(output || "Vercel deploy failed");
   }
   log("deploy", `Vercel deploy complete for ${project}`);
+  markProjectEvent(project, "vercel", "Vercel deploy");
   return { ok: true, output };
 }
 
@@ -520,7 +563,25 @@ function deployGasFromGui(project) {
     throw new Error(deployOutput || "clasp deploy failed");
   }
   log("deploy", `GAS deploy complete for ${project}`);
+  markProjectEvent(project, "gas", "GAS deploy");
   return { ok: true, output: `${pushOutput}\n${deployOutput}`.trim() };
+}
+
+function markProjectEvent(project, type, label) {
+  projectEvents.unshift({
+    project,
+    type,
+    label,
+    at: new Date().toISOString(),
+  });
+  while (projectEvents.length > 80) projectEvents.pop();
+}
+
+function recentProjectEvents(project) {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  return projectEvents
+    .filter((event) => event.project === project && Date.parse(event.at) >= cutoff)
+    .slice(0, 4);
 }
 
 function packageRunnerCommand() {
@@ -648,6 +709,24 @@ function setDefaultProject(project) {
     "launcher",
     `Default project changed to ${project}. Restart agent to apply to active sessions.`,
   );
+}
+
+function deleteProject(project) {
+  const projectPath = requireProjectDirectory(project);
+  const workspaceRoot = fs.realpathSync(requireWorkspaceRoot());
+  const resolvedProject = fs.realpathSync(projectPath);
+  if (resolvedProject === workspaceRoot || !resolvedProject.startsWith(workspaceRoot + path.sep)) {
+    throw new Error("Refusing to delete a folder outside WORKSPACE_ROOT.");
+  }
+
+  fs.rmSync(resolvedProject, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 });
+  if (process.env.DEFAULT_PROJECT === project) {
+    upsertEnvValue("DEFAULT_PROJECT", "");
+    process.env.DEFAULT_PROJECT = "";
+  }
+  log("launcher", `Deleted project folder: ${resolvedProject}`);
+  markProjectEvent(project, "delete", "Project deleted");
+  return { ok: true, project, deletedPath: resolvedProject };
 }
 
 function addProjectFromUrl(rawUrl) {
@@ -1276,6 +1355,12 @@ function renderPage() {
         border-radius: 8px;
         background: var(--panel-soft);
       }
+      .project-actions {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+        min-width: 150px;
+      }
       .project-name {
         display: flex;
         align-items: center;
@@ -1299,6 +1384,57 @@ function renderPage() {
         border-color: rgba(30, 189, 114, 0.38);
         color: var(--green-2);
         background: rgba(30, 189, 114, 0.08);
+      }
+      .event-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 0;
+      }
+      .event-badge {
+        border-color: rgba(245, 158, 11, 0.42);
+        color: #b45309;
+        background: rgba(245, 158, 11, 0.12);
+        animation: pulseEvent 1.2s ease-in-out infinite;
+      }
+      [data-theme="dark"] .event-badge { color: #fbbf24; }
+      @keyframes pulseEvent {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.38); }
+        50% { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0); }
+      }
+      .latest-commit {
+        color: var(--green-2);
+        font-weight: 700;
+      }
+      .doc-preview {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .doc-snippet {
+        min-height: 76px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .doc-snippet strong {
+        display: block;
+        color: var(--ink);
+        margin-bottom: 5px;
+      }
+      button.star-active {
+        border-color: rgba(245, 158, 11, 0.5);
+        color: #b45309;
+        background: rgba(245, 158, 11, 0.12);
+      }
+      button.star-active svg {
+        fill: #fbbf24;
+        stroke: #b45309;
       }
       .project-meta {
         display: grid;
@@ -1383,7 +1519,7 @@ function renderPage() {
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
         .sidebar { position: relative; height: auto; }
-        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid, .git-steps, .file-row, .deploy-grid { grid-template-columns: 1fr; }
+        .hero-card, .grid, .info-grid, .project-card, .project-meta, .doc-preview, .settings-grid, .git-steps, .file-row, .deploy-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .content { padding: 18px; }
@@ -1667,6 +1803,9 @@ function renderPage() {
       els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
       els.clearLogsFull.addEventListener("click", () => post("/api/logs/clear"));
       els.refreshProjects.addEventListener("click", refreshAll);
+      els.projects.addEventListener("change", () => {
+        els.setProject.classList.toggle("star-active", els.projects.value && els.projects.value === els.projects.dataset.defaultProject);
+      });
       els.gitRefresh.addEventListener("click", refreshGitStatus);
       els.gitProject.addEventListener("change", refreshGitStatus);
       els.gitSelectAll.addEventListener("click", () => {
@@ -1822,6 +1961,7 @@ function renderPage() {
 
       function renderProjects(data) {
         const selected = els.projects.value || data.defaultProject;
+        els.projects.dataset.defaultProject = data.defaultProject || "";
         els.projects.innerHTML = "";
         for (const project of data.projects || []) {
           const option = document.createElement("option");
@@ -1830,6 +1970,7 @@ function renderPage() {
           option.selected = project === selected;
           els.projects.append(option);
         }
+        els.setProject.classList.toggle("star-active", selected && selected === data.defaultProject);
         const gitSelected = els.gitProject.value || data.defaultProject;
         els.gitProject.innerHTML = "";
         for (const project of data.projects || []) {
@@ -1849,10 +1990,19 @@ function renderPage() {
         }
         els.projectDetails.innerHTML = projects.map((project) => {
           const commit = project.latestCommit
-            ? escapeHtml(project.latestCommit.hash + " · " + project.latestCommit.message)
+            ? '<span class="latest-commit">' + escapeHtml(project.latestCommit.hash + " · " + project.latestCommit.message) + '</span>'
             : "ยังไม่มี commit หรือไม่ใช่ git repo";
           const dirty = project.dirty ? "มีไฟล์เปลี่ยนแปลง" : "clean";
           const source = project.sourceUrl ? escapeHtml(project.sourceUrl) : "-";
+          const events = (project.events || []).map((event) =>
+            '<span class="badge event-badge">' + escapeHtml(event.label) + '</span>'
+          ).join("");
+          const readme = project.docs?.readme
+            ? '<div class="doc-snippet"><strong>' + escapeHtml(project.docs.readme.file) + '</strong>' + escapeHtml(project.docs.readme.text || "-") + '</div>'
+            : '<div class="doc-snippet"><strong>README</strong>ยังไม่มีไฟล์ README.md</div>';
+          const todo = project.docs?.todo
+            ? '<div class="doc-snippet"><strong>' + escapeHtml(project.docs.todo.file) + '</strong>' + escapeHtml(project.docs.todo.text || "-") + '</div>'
+            : '<div class="doc-snippet"><strong>TODO</strong>ยังไม่มีไฟล์ TODO.md</div>';
           return '<div class="project-card">'
             + '<div>'
             + '<div class="project-name">' + escapeHtml(project.name)
@@ -1860,18 +2010,32 @@ function renderPage() {
             + (project.active ? ' <span class="badge active-badge">active</span>' : '')
             + '</div>'
             + '<div class="hint">' + escapeHtml(project.description) + '</div>'
+            + (events ? '<div class="event-badges">' + events + '</div>' : '')
+            + '<div class="doc-preview">' + readme + todo + '</div>'
             + '<div class="project-meta">'
             + '<div><strong>ล่าสุด commit</strong>' + commit + '</div>'
             + '<div><strong>สถานะ Git</strong>' + escapeHtml(dirty) + '</div>'
             + '<div><strong>แหล่งที่มา</strong>' + source + '</div>'
             + '</div>'
             + '</div>'
-            + '<button data-project="' + escapeHtml(project.name) + '" class="set-project-inline">${icon("star")} ใช้โปรเจกต์นี้</button>'
+            + '<div class="project-actions">'
+            + '<button data-project="' + escapeHtml(project.name) + '" class="set-project-inline' + (project.active ? ' star-active' : '') + '">${icon("star")} ใช้โปรเจกต์นี้</button>'
+            + '<button data-project="' + escapeHtml(project.name) + '" class="delete-project danger">${icon("trash")} ลบโปรเจกต์</button>'
+            + '</div>'
             + '</div>';
         }).join("");
         document.querySelectorAll(".set-project-inline").forEach((button) => {
           button.addEventListener("click", async () => {
             await post("/api/projects/default", { project: button.dataset.project });
+            await refreshAll();
+          });
+        });
+        document.querySelectorAll(".delete-project").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const project = button.dataset.project;
+            const typed = prompt("การลบจะลบทั้ง UI และไฟล์ใน D:\\\\AI-Workspace\\\\ ให้พิมพ์ชื่อโปรเจกต์เพื่อยืนยัน:", project);
+            if (typed !== project) return;
+            await post("/api/projects/delete", { project });
             await refreshAll();
           });
         });
