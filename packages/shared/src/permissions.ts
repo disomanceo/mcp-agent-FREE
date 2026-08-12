@@ -16,6 +16,15 @@ export const safeTools = new Set([
 ]);
 
 export const workTools = new Set([...safeTools, "write_file"]);
+export const controlledGitTools = new Set([
+  "git_stage",
+  "git_commit",
+  "git_push",
+  "git_pull_ff_only",
+  "git_log",
+  "git_diff_staged",
+  "npm_install",
+]);
 
 export function assertToolAllowed(tool: string, mode: PermissionMode): void {
   if (mode === "SAFE") {
@@ -26,7 +35,7 @@ export function assertToolAllowed(tool: string, mode: PermissionMode): void {
   }
 
   if (mode === "WORK") {
-    if (!workTools.has(tool)) {
+    if (!workTools.has(tool) && !controlledGitTools.has(tool)) {
       throw new AgentError("PERMISSION_DENIED", `Tool ${tool} is not allowed in WORK mode`);
     }
     return;

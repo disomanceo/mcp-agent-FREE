@@ -137,11 +137,19 @@ In ChatGPT web:
    - `list_files`
    - `read_file`
    - `write_file`
-   - `git_status`
-   - `git_diff`
-   - `npm_lint`
-   - `npm_build`
-   - `npm_test`
+
+- `git_status`
+- `git_diff`
+- `git_stage`
+- `git_commit`
+- `git_push`
+- `git_pull_ff_only`
+- `git_log`
+- `git_diff_staged`
+- `npm_lint`
+- `npm_install`
+- `npm_build`
+- `npm_test`
 
 ## Prompt pattern in ChatGPT
 
@@ -161,7 +169,7 @@ Do not use browser or other tools.
 - Keep `WORKSPACE_ROOT=D:\AI-Workspace`.
 - Put only projects you want ChatGPT to access under `D:\AI-Workspace`.
 - `WORK` mode can write files inside allowed projects.
-- This agent still blocks delete, arbitrary shell, git commit, git push, and writing `.env` secret files.
+- Git tools are controlled: no force push, no arbitrary shell, no custom push destination, no reset, no rebase.
 - Switch back to `SAFE` mode when you only want read/build access.
 
 ## Current local status

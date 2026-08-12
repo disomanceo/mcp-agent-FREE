@@ -23,6 +23,7 @@
     "mode:work": "node scripts/set-mode.mjs WORK",
     "demo:local": "node scripts/demo-local.mjs",
     "demo:work": "node scripts/demo-work.mjs",
+    "demo:git": "node scripts/demo-git.mjs",
     "mcp:call": "node scripts/call-tool.mjs",
     "tunnel:ngrok": "node scripts/ngrok-tunnel.mjs",
     "smoke": "node scripts/smoke.mjs",

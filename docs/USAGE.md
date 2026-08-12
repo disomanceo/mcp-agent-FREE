@@ -87,6 +87,12 @@ npm run mcp:call -- read_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT
 npm run demo:work -- TravelTank300
 ```
 
+ทดลอง stage/commit/push กับ repo ชั่วคราวที่ cleanup อัตโนมัติ:
+
+```powershell
+npm run demo:git
+```
+
 เปิด tunnel ผ่าน ngrok สำหรับ ChatGPT:
 
 ```powershell

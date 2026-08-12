@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { executeTool } from "./tools.js";
 
@@ -80,6 +81,42 @@ describe("tool argument validation", () => {
           auditLogPath: path.join(root, "audit.jsonl"),
         },
       ),
-    ).rejects.toThrow("environment secret");
+    ).rejects.toThrow("Secret-looking");
+  });
+
+  it("rejects staging secret-looking files", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    const project = path.join(root, "Demo");
+    fs.mkdirSync(project);
+    fs.writeFileSync(path.join(project, ".env"), "SECRET=value\n");
+    await runGit(project, ["init"]);
+
+    await expect(
+      executeTool(
+        "git_stage",
+        { project: "Demo", paths: [".env"] },
+        {
+          deviceId: "test",
+          workspaceRoot: root,
+          permissionMode: "WORK",
+          auditLogPath: path.join(root, "audit.jsonl"),
+        },
+      ),
+    ).rejects.toThrow("Secret-looking");
   });
 });
+
+function runGit(cwd: string, args: string[]) {
+  const result = fsSyncSpawn("git", args, cwd);
+  if (result.status !== 0) {
+    throw new Error(result.stderr);
+  }
+}
+
+function fsSyncSpawn(command: string, args: string[], cwd: string) {
+  return spawnSync(command, args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+}

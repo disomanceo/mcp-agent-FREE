@@ -3,6 +3,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import {
   deviceToolArgsSchema,
+  gitCommitArgsSchema,
+  gitLogArgsSchema,
+  gitStageArgsSchema,
   listFilesArgsSchema,
   projectArgsSchema,
   readFileArgsSchema,
@@ -78,9 +81,65 @@ export function createMcpServer(registry: DeviceRegistry, requestTimeoutMs: numb
     server,
     registry,
     requestTimeoutMs,
+    "git_diff_staged",
+    deviceToolArgsSchema.merge(projectArgsSchema).shape,
+    "Run git diff --cached for staged changes in an allowed git project.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "git_log",
+    deviceToolArgsSchema.merge(gitLogArgsSchema).shape,
+    "Show recent git commits for an allowed git project.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "git_stage",
+    deviceToolArgsSchema.merge(gitStageArgsSchema).shape,
+    "WORK mode only. Stage selected safe paths in an allowed git project. Secret-looking files are blocked.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "git_commit",
+    deviceToolArgsSchema.merge(gitCommitArgsSchema).shape,
+    "WORK mode only. Commit currently staged changes in an allowed git project. By default runs available lint/build checks first and blocks secret-looking staged files.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "git_push",
+    deviceToolArgsSchema.merge(projectArgsSchema).shape,
+    "WORK mode only. Push the current branch to its configured upstream. Force push and custom destinations are not supported.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "git_pull_ff_only",
+    deviceToolArgsSchema.merge(projectArgsSchema).shape,
+    "WORK mode only. Pull the current branch with git pull --ff-only. Merge commits are not created.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
     "npm_lint",
     deviceToolArgsSchema.merge(projectArgsSchema).shape,
     "Run npm run lint for an allowed project. No arbitrary command input is accepted.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "npm_install",
+    deviceToolArgsSchema.merge(projectArgsSchema).shape,
+    "WORK mode only. Run npm install in an allowed project. No arbitrary package arguments are accepted.",
   );
   registerAgentTool(
     server,

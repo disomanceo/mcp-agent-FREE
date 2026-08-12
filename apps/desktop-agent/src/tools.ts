@@ -8,10 +8,14 @@ import {
   assertToolAllowed,
   PermissionMode,
   resolveProjectPath,
+  runSafeCommand,
   runWhitelistedCommand,
   toAgentError,
 } from "@personal-mcp-agent/shared";
 import {
+  gitCommitArgsSchema,
+  gitLogArgsSchema,
+  gitStageArgsSchema,
   listFilesArgsSchema,
   projectArgsSchema,
   readFileArgsSchema,
@@ -88,9 +92,40 @@ export async function executeTool(
       case "git_diff":
         project = projectArgsSchema.parse(input).project;
         return gitCommand(ctx.workspaceRoot, project, "git_diff");
+      case "git_diff_staged":
+        project = projectArgsSchema.parse(input).project;
+        return fixedGitCommand(ctx.workspaceRoot, project, ["diff", "--cached"], 60_000);
+      case "git_log": {
+        const parsed = gitLogArgsSchema.parse(input);
+        project = parsed.project;
+        return fixedGitCommand(ctx.workspaceRoot, parsed.project, [
+          "log",
+          "--oneline",
+          `-${parsed.limit}`,
+        ]);
+      }
+      case "git_stage": {
+        const parsed = gitStageArgsSchema.parse(input);
+        project = parsed.project;
+        return gitStage(ctx.workspaceRoot, parsed.project, parsed.paths);
+      }
+      case "git_commit": {
+        const parsed = gitCommitArgsSchema.parse(input);
+        project = parsed.project;
+        return gitCommit(ctx.workspaceRoot, parsed.project, parsed.message, parsed.runChecks);
+      }
+      case "git_push":
+        project = projectArgsSchema.parse(input).project;
+        return gitPush(ctx.workspaceRoot, project);
+      case "git_pull_ff_only":
+        project = projectArgsSchema.parse(input).project;
+        return gitPullFfOnly(ctx.workspaceRoot, project);
       case "npm_lint":
         project = projectArgsSchema.parse(input).project;
         return npmCommand(ctx.workspaceRoot, project, "npm_lint");
+      case "npm_install":
+        project = projectArgsSchema.parse(input).project;
+        return npmInstall(ctx.workspaceRoot, project);
       case "npm_build":
         project = projectArgsSchema.parse(input).project;
         return npmCommand(ctx.workspaceRoot, project, "npm_build");
@@ -216,6 +251,113 @@ async function gitCommand(
   });
 }
 
+async function fixedGitCommand(
+  workspaceRoot: string,
+  project: string,
+  args: readonly string[],
+  timeoutMs = 60_000,
+) {
+  const cwd = assertGitProject(workspaceRoot, project);
+  return runSafeCommand({
+    workspaceRoot,
+    cwd: path.relative(workspaceRoot, cwd),
+    executable: "git",
+    args,
+    timeoutMs,
+  });
+}
+
+async function gitStage(workspaceRoot: string, project: string, paths: string[]) {
+  const cwd = assertGitProject(workspaceRoot, project);
+  for (const relativePath of paths) {
+    assertNotSecretPath(relativePath);
+    resolveProjectPath(workspaceRoot, project, relativePath);
+  }
+
+  return runSafeCommand({
+    workspaceRoot,
+    cwd: path.relative(workspaceRoot, cwd),
+    executable: "git",
+    args: ["add", "--", ...paths],
+    timeoutMs: 60_000,
+  });
+}
+
+async function gitCommit(
+  workspaceRoot: string,
+  project: string,
+  message: string,
+  runChecks: boolean,
+) {
+  const cwd = assertGitProject(workspaceRoot, project);
+  const cwdRelative = path.relative(workspaceRoot, cwd);
+  const stagedFiles = await getStagedFiles(workspaceRoot, cwdRelative);
+  if (stagedFiles.length === 0) {
+    throw new AgentError("INVALID_ARGUMENTS", "No staged changes to commit");
+  }
+  assertNoSecretPaths(stagedFiles);
+
+  const checkResults = [];
+  if (runChecks) {
+    checkResults.push(...(await runAvailableChecks(workspaceRoot, project)));
+  }
+
+  const commit = await runSafeCommand({
+    workspaceRoot,
+    cwd: cwdRelative,
+    executable: "git",
+    args: ["commit", "-m", message],
+    timeoutMs: 60_000,
+  });
+
+  return { commit, checks: checkResults, stagedFiles };
+}
+
+async function gitPush(workspaceRoot: string, project: string) {
+  const cwd = assertGitProject(workspaceRoot, project);
+  const cwdRelative = path.relative(workspaceRoot, cwd);
+  const upstream = await runSafeCommand({
+    workspaceRoot,
+    cwd: cwdRelative,
+    executable: "git",
+    args: ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    timeoutMs: 30_000,
+  });
+  if (upstream.exitCode !== 0 || upstream.stdout.trim().length === 0) {
+    throw new AgentError("INVALID_ARGUMENTS", "Current branch has no upstream");
+  }
+
+  const status = await runSafeCommand({
+    workspaceRoot,
+    cwd: cwdRelative,
+    executable: "git",
+    args: ["status", "--porcelain"],
+    timeoutMs: 30_000,
+  });
+  if (status.stdout.trim().length > 0) {
+    throw new AgentError("INVALID_ARGUMENTS", "Working tree must be clean before push");
+  }
+
+  return runSafeCommand({
+    workspaceRoot,
+    cwd: cwdRelative,
+    executable: "git",
+    args: ["push"],
+    timeoutMs: 120_000,
+  });
+}
+
+async function gitPullFfOnly(workspaceRoot: string, project: string) {
+  const cwd = assertGitProject(workspaceRoot, project);
+  return runSafeCommand({
+    workspaceRoot,
+    cwd: path.relative(workspaceRoot, cwd),
+    executable: "git",
+    args: ["pull", "--ff-only"],
+    timeoutMs: 120_000,
+  });
+}
+
 async function npmCommand(
   workspaceRoot: string,
   project: string,
@@ -238,10 +380,79 @@ async function npmCommand(
   });
 }
 
+async function npmInstall(workspaceRoot: string, project: string) {
+  const cwd = assertProjectDirectory(workspaceRoot, project);
+  return runSafeCommand({
+    workspaceRoot,
+    cwd: path.relative(workspaceRoot, cwd),
+    executable: "npm",
+    args: ["install"],
+    timeoutMs: 300_000,
+  });
+}
+
+function assertGitProject(workspaceRoot: string, project: string): string {
+  const cwd = assertProjectDirectory(workspaceRoot, project);
+  if (!fsSync.existsSync(path.join(cwd, ".git"))) {
+    throw new AgentError("NOT_A_GIT_REPOSITORY", "Project is not a git repository");
+  }
+  return cwd;
+}
+
+async function getStagedFiles(workspaceRoot: string, cwd: string): Promise<string[]> {
+  const result = await runSafeCommand({
+    workspaceRoot,
+    cwd,
+    executable: "git",
+    args: ["diff", "--cached", "--name-only"],
+    timeoutMs: 30_000,
+  });
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function runAvailableChecks(workspaceRoot: string, project: string) {
+  const cwd = assertProjectDirectory(workspaceRoot, project);
+  const packageJson = JSON.parse(await fs.readFile(path.join(cwd, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const results = [];
+  for (const [scriptName, command] of [
+    ["lint", "npm_lint"],
+    ["build", "npm_build"],
+  ] as const) {
+    if (!packageJson.scripts?.[scriptName]) {
+      continue;
+    }
+    const result = await npmCommand(workspaceRoot, project, command);
+    if (result.exitCode !== 0) {
+      throw new AgentError("COMMAND_FAILED", `${scriptName} failed before commit`);
+    }
+    results.push({ script: scriptName, result });
+  }
+  return results;
+}
+
 function assertNotSecretPath(relativePath: string): void {
   const normalized = relativePath.replaceAll("\\", "/").toLowerCase();
   const baseName = path.posix.basename(normalized);
-  if (baseName === ".env" || (baseName.startsWith(".env.") && baseName !== ".env.example")) {
-    throw new AgentError("PATH_NOT_ALLOWED", "Writing environment secret files is not allowed");
+  const secretNames = new Set(["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]);
+  if (
+    baseName === ".env" ||
+    (baseName.startsWith(".env.") && baseName !== ".env.example") ||
+    baseName.endsWith(".pem") ||
+    baseName.endsWith(".key") ||
+    secretNames.has(baseName) ||
+    baseName.includes("secret")
+  ) {
+    throw new AgentError("PATH_NOT_ALLOWED", "Secret-looking files are not allowed");
+  }
+}
+
+function assertNoSecretPaths(paths: string[]): void {
+  for (const relativePath of paths) {
+    assertNotSecretPath(relativePath);
   }
 }

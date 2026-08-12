@@ -70,6 +70,22 @@ export const writeFileArgsSchema = z.object({
   maxBytes: z.number().int().min(1).max(1_000_000).default(1_000_000),
 });
 
+export const gitStageArgsSchema = z.object({
+  project: z.string().min(1),
+  paths: z.array(z.string().min(1)).min(1).max(100),
+});
+
+export const gitCommitArgsSchema = z.object({
+  project: z.string().min(1),
+  message: z.string().min(1).max(200),
+  runChecks: z.boolean().default(true),
+});
+
+export const gitLogArgsSchema = z.object({
+  project: z.string().min(1),
+  limit: z.number().int().min(1).max(50).default(10),
+});
+
 export const deviceToolArgsSchema = z.object({
   deviceId: z.string().min(1).optional(),
 });

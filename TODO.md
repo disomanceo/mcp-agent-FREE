@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Phase 2 Complete: Controlled WORK mode with local write-file verification
+Phase 3 Complete: Controlled WORK mode with git commit/push tools
 
 ## Completed
 
@@ -22,6 +22,8 @@ Phase 2 Complete: Controlled WORK mode with local write-file verification
 - `npm_lint` tool added as a fixed safe command
 - local `demo:work` verifies MCP write/read behavior and cleans up scratch files
 - ChatGPT Developer mode and Secure MCP Tunnel runbook added
+- controlled git tools added: stage, commit, push, pull ff-only, log, staged diff
+- `npm_install` added as a fixed command
 
 ## Pending
 
@@ -31,6 +33,7 @@ Phase 2 Complete: Controlled WORK mode with local write-file verification
 - cloud deployment hardening for public Gateway
 - production WebSocket hosting plan outside Vercel Functions or via a dedicated relay service
 - real ChatGPT connection requires user-created OpenAI Secure MCP Tunnel or public HTTPS forwarding URL
+- approval UX for git commit/push is still handled by ChatGPT confirmation and prompt discipline, not by a native desktop approval dialog
 
 ## Known Issues
 
@@ -43,10 +46,10 @@ Phase 2 Complete: Controlled WORK mode with local write-file verification
 ## Security Notes
 
 - SAFE mode remains the read/build default; WORK mode is available only when explicitly enabled in `.env`.
-- No write/delete/arbitrary shell/git commit/git push operations are implemented.
+- No delete, arbitrary shell, git reset, git rebase, force push, or custom push destination operations are implemented.
 - All project file access must stay inside WORKSPACE_ROOT.
 - Tokens and environment variables are not written to audit logs.
-- WORK mode enables `write_file` but still blocks delete, arbitrary shell, git commit, git push, git reset, and `.env` secret writes.
+- WORK mode enables controlled git commit/push, but still blocks force push, reset, rebase, delete, arbitrary shell, custom push targets, and `.env` secret writes.
 
 ## Next Step
 

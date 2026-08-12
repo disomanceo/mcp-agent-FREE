@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { agentRequestSchema, listFilesArgsSchema, writeFileArgsSchema } from "../src/index.js";
+import {
+  agentRequestSchema,
+  gitCommitArgsSchema,
+  gitStageArgsSchema,
+  listFilesArgsSchema,
+  writeFileArgsSchema,
+} from "../src/index.js";
 
 describe("protocol parsing", () => {
   it("parses valid agent requests", () => {
@@ -33,5 +39,12 @@ describe("protocol parsing", () => {
 
     expect(parsed.createDirs).toBe(false);
     expect(parsed.overwrite).toBe(true);
+  });
+
+  it("validates controlled git args", () => {
+    expect(gitStageArgsSchema.parse({ project: "Demo", paths: ["src/index.ts"] }).paths).toEqual([
+      "src/index.ts",
+    ]);
+    expect(gitCommitArgsSchema.parse({ project: "Demo", message: "test" }).runChecks).toBe(true);
   });
 });

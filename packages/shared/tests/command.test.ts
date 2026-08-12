@@ -26,4 +26,9 @@ describe("command whitelist", () => {
   it("rejects write_file in SAFE mode", () => {
     expect(() => assertToolAllowed("write_file", "SAFE")).toThrow("not allowed in SAFE mode");
   });
+
+  it("allows controlled git tools in WORK mode only", () => {
+    expect(() => assertToolAllowed("git_commit", "WORK")).not.toThrow();
+    expect(() => assertToolAllowed("git_commit", "SAFE")).toThrow("not allowed in SAFE mode");
+  });
 });
