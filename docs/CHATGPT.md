@@ -27,7 +27,23 @@ npm run build
 
 Close old Gateway or Agent terminals before starting the updated version. Old running processes may not expose newly added tools like `write_file`.
 
-Then open two terminals.
+Easy mode: open everything in one terminal.
+
+```powershell
+cd D:\personal-mcp-agent
+npm run start:chatgpt
+```
+
+Or double-click:
+
+```text
+D:\personal-mcp-agent\Personal MCP Agent.cmd
+```
+
+The launcher starts Gateway, Desktop Agent, and ngrok, then prints the `MCP URL`.
+If it says port `8787` is already in use, close old Gateway/Agent terminals and run the launcher again.
+
+Manual mode: open two terminals.
 
 Terminal 1:
 
@@ -64,6 +80,16 @@ Example:
 ```text
 https://example.ngrok-free.app/mcp
 ```
+
+## Switch projects
+
+```powershell
+cd D:\personal-mcp-agent
+npm run project:list
+npm run project:set -- TravelTank300
+```
+
+Restart the launcher after changing `DEFAULT_PROJECT`. Most tools accept `project`, but if ChatGPT omits it, the agent uses `DEFAULT_PROJECT`.
 
 ## Test write locally before connecting ChatGPT
 

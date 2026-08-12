@@ -22,6 +22,23 @@ npm run doctor
 
 ## 2. เปิด Gateway
 
+วิธีง่ายสุด:
+
+```powershell
+cd D:\personal-mcp-agent
+npm run start:chatgpt
+```
+
+หรือดับเบิลคลิก:
+
+```text
+D:\personal-mcp-agent\Personal MCP Agent.cmd
+```
+
+คำสั่งนี้จะเปิด Gateway + Agent + ngrok ให้ในหน้าต่างเดียว และพิมพ์ `MCP URL` สำหรับ ChatGPT
+
+ถ้าต้องการเปิดแยกเอง ให้ใช้วิธีด้านล่าง
+
 เปิด PowerShell หน้าต่างที่ 1:
 
 ```powershell
@@ -143,6 +160,16 @@ git clone https://github.com/your-name/your-project.git
 cd D:\personal-mcp-agent
 npm run mcp:call -- list_files "{\"project\":\"your-project\"}"
 ```
+
+ตั้ง default project เพื่อให้ ChatGPT ไม่ต้องส่ง `project` ทุก tool:
+
+```powershell
+cd D:\personal-mcp-agent
+npm run project:list
+npm run project:set -- TravelTank300
+```
+
+หลังเปลี่ยน default project ให้ restart Agent/Gateway หรือรัน `npm run start:chatgpt` ใหม่
 
 Agent จะปฏิเสธ path ที่ออกนอก `WORKSPACE_ROOT` เช่น `../secret`, `C:\Windows`, หรือ `\\server\share`
 

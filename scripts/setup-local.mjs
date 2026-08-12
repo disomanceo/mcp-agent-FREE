@@ -20,6 +20,7 @@ if (!fs.existsSync(envPath)) {
       "GATEWAY_URL=ws://127.0.0.1:8787/agent",
       `AGENT_TOKEN=${token}`,
       `WORKSPACE_ROOT=${workspaceRoot}`,
+      "DEFAULT_PROJECT=SampleProject",
       "DEVICE_ID=personal-windows-agent",
       "DEVICE_NAME=Windows Desktop Agent",
       "PERMISSION_MODE=SAFE",

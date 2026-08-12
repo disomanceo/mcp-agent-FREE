@@ -24,6 +24,8 @@ Phase 3 Complete: Controlled WORK mode with git commit/push tools
 - ChatGPT Developer mode and Secure MCP Tunnel runbook added
 - controlled git tools added: stage, commit, push, pull ff-only, log, staged diff
 - `npm_install` added as a fixed command
+- one-window ChatGPT launcher added for Gateway + Agent + ngrok
+- default project switching added
 
 ## Pending
 

@@ -48,6 +48,43 @@ describe("tool argument validation", () => {
     expect(fs.readFileSync(path.join(root, "Demo", "src", "hello.ts"), "utf8")).toContain("hello");
   });
 
+  it("uses defaultProject when project is omitted", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    fs.mkdirSync(path.join(root, "Demo"));
+    fs.writeFileSync(path.join(root, "Demo", "README.md"), "default project works\n");
+
+    const result = await executeTool(
+      "read_file",
+      { path: "README.md" },
+      {
+        deviceId: "test",
+        workspaceRoot: root,
+        defaultProject: "Demo",
+        permissionMode: "SAFE",
+        auditLogPath: path.join(root, "audit.jsonl"),
+      },
+    );
+
+    expect(result).toMatchObject({ path: "README.md" });
+  });
+
+  it("requires a project when no defaultProject is configured", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+
+    await expect(
+      executeTool(
+        "read_file",
+        { path: "README.md" },
+        {
+          deviceId: "test",
+          workspaceRoot: root,
+          permissionMode: "SAFE",
+          auditLogPath: path.join(root, "audit.jsonl"),
+        },
+      ),
+    ).rejects.toThrow("Project is required");
+  });
+
   it("rejects write_file in SAFE mode", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
     fs.mkdirSync(path.join(root, "Demo"));

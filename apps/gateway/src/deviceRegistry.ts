@@ -53,6 +53,7 @@ export class DeviceRegistry {
       deviceName: device.deviceName,
       agentVersion: device.agentVersion,
       workspaceRoot: device.workspaceRoot,
+      defaultProject: device.defaultProject,
       permissionMode: device.permissionMode,
       connectedAt: device.connectedAt,
       lastHeartbeatAt: device.lastHeartbeatAt,

@@ -38,6 +38,7 @@ const env = {
   AGENT_TOKEN: token,
   GATEWAY_URL: `ws://127.0.0.1:${port}/agent`,
   WORKSPACE_ROOT: workspace,
+  DEFAULT_PROJECT: "DemoProject",
   DEVICE_ID: "smoke-agent",
   DEVICE_NAME: "Smoke Agent",
   PERMISSION_MODE: "SAFE",

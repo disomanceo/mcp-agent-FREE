@@ -31,6 +31,7 @@ function connect() {
         deviceName: config.deviceName,
         agentVersion,
         workspaceRoot: config.workspaceRoot,
+        defaultProject: config.defaultProject,
         permissionMode: config.permissionMode,
         connectedAt: new Date().toISOString(),
       }),
@@ -58,6 +59,7 @@ function connect() {
       const data = await executeTool(request.tool, request.args, {
         deviceId: config.deviceId,
         workspaceRoot: config.workspaceRoot,
+        defaultProject: config.defaultProject,
         permissionMode: config.permissionMode,
         auditLogPath: config.auditLogPath,
       });

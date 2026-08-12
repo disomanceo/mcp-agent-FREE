@@ -111,6 +111,15 @@ npm run smoke
 
 ดูขั้นตอนเชื่อม ChatGPT Developer mode / MCP ที่ [docs/CHATGPT.md](docs/CHATGPT.md)
 
+เปิด Gateway + Agent + ngrok ในหน้าต่างเดียว:
+
+```powershell
+cd D:\personal-mcp-agent
+npm run start:chatgpt
+```
+
+หรือดับเบิลคลิก `Personal MCP Agent.cmd`
+
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.

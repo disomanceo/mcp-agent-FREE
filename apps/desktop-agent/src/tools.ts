@@ -25,6 +25,7 @@ import {
 export type ToolContext = {
   deviceId: string;
   workspaceRoot: string;
+  defaultProject?: string;
   permissionMode: PermissionMode;
   auditLogPath: string;
 };
@@ -73,32 +74,32 @@ export async function executeTool(
         return getProjects(ctx.workspaceRoot);
       case "list_files": {
         const parsed = listFilesArgsSchema.parse(input);
-        project = parsed.project;
-        return listFiles(ctx.workspaceRoot, parsed.project, parsed.path, parsed.limit);
+        project = resolveToolProject(parsed.project, ctx);
+        return listFiles(ctx.workspaceRoot, project, parsed.path, parsed.limit);
       }
       case "read_file": {
         const parsed = readFileArgsSchema.parse(input);
-        project = parsed.project;
-        return readFile(ctx.workspaceRoot, parsed.project, parsed.path, parsed.maxBytes);
+        project = resolveToolProject(parsed.project, ctx);
+        return readFile(ctx.workspaceRoot, project, parsed.path, parsed.maxBytes);
       }
       case "write_file": {
         const parsed = writeFileArgsSchema.parse(input);
-        project = parsed.project;
-        return writeFile(ctx.workspaceRoot, parsed);
+        project = resolveToolProject(parsed.project, ctx);
+        return writeFile(ctx.workspaceRoot, { ...parsed, project });
       }
       case "git_status":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return gitCommand(ctx.workspaceRoot, project, "git_status");
       case "git_diff":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return gitCommand(ctx.workspaceRoot, project, "git_diff");
       case "git_diff_staged":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return fixedGitCommand(ctx.workspaceRoot, project, ["diff", "--cached"], 60_000);
       case "git_log": {
         const parsed = gitLogArgsSchema.parse(input);
-        project = parsed.project;
-        return fixedGitCommand(ctx.workspaceRoot, parsed.project, [
+        project = resolveToolProject(parsed.project, ctx);
+        return fixedGitCommand(ctx.workspaceRoot, project, [
           "log",
           "--oneline",
           `-${parsed.limit}`,
@@ -106,36 +107,47 @@ export async function executeTool(
       }
       case "git_stage": {
         const parsed = gitStageArgsSchema.parse(input);
-        project = parsed.project;
-        return gitStage(ctx.workspaceRoot, parsed.project, parsed.paths);
+        project = resolveToolProject(parsed.project, ctx);
+        return gitStage(ctx.workspaceRoot, project, parsed.paths);
       }
       case "git_commit": {
         const parsed = gitCommitArgsSchema.parse(input);
-        project = parsed.project;
-        return gitCommit(ctx.workspaceRoot, parsed.project, parsed.message, parsed.runChecks);
+        project = resolveToolProject(parsed.project, ctx);
+        return gitCommit(ctx.workspaceRoot, project, parsed.message, parsed.runChecks);
       }
       case "git_push":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return gitPush(ctx.workspaceRoot, project);
       case "git_pull_ff_only":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return gitPullFfOnly(ctx.workspaceRoot, project);
       case "npm_lint":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return npmCommand(ctx.workspaceRoot, project, "npm_lint");
       case "npm_install":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return npmInstall(ctx.workspaceRoot, project);
       case "npm_build":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return npmCommand(ctx.workspaceRoot, project, "npm_build");
       case "npm_test":
-        project = projectArgsSchema.parse(input).project;
+        project = resolveToolProject(projectArgsSchema.parse(input).project, ctx);
         return npmCommand(ctx.workspaceRoot, project, "npm_test");
       default:
         throw new AgentError("INVALID_ARGUMENTS", `Unknown tool: ${name}`);
     }
   }
+}
+
+function resolveToolProject(project: string | undefined, context: ToolContext): string {
+  const selected = project ?? context.defaultProject;
+  if (!selected) {
+    throw new AgentError(
+      "INVALID_ARGUMENTS",
+      "Project is required. Provide project or set DEFAULT_PROJECT in .env.",
+    );
+  }
+  return selected;
 }
 
 async function getProjects(workspaceRoot: string) {

@@ -8,6 +8,7 @@ export const agentHelloSchema = z.object({
   deviceName: z.string().min(1),
   agentVersion: z.string().min(1),
   workspaceRoot: z.string().min(1),
+  defaultProject: z.string().min(1).optional(),
   permissionMode: permissionModeSchema,
   connectedAt: z.string().datetime(),
 });
@@ -46,23 +47,23 @@ export const gatewayMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export const projectArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
 });
 
 export const listFilesArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   path: z.string().default("."),
   limit: z.number().int().min(1).max(500).default(200),
 });
 
 export const readFileArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   path: z.string().min(1),
   maxBytes: z.number().int().min(1).max(1_000_000).default(1_000_000),
 });
 
 export const writeFileArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   path: z.string().min(1),
   content: z.string(),
   createDirs: z.boolean().default(false),
@@ -71,18 +72,18 @@ export const writeFileArgsSchema = z.object({
 });
 
 export const gitStageArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   paths: z.array(z.string().min(1)).min(1).max(100),
 });
 
 export const gitCommitArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   message: z.string().min(1).max(200),
   runChecks: z.boolean().default(true),
 });
 
 export const gitLogArgsSchema = z.object({
-  project: z.string().min(1),
+  project: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(50).default(10),
 });
 

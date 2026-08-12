@@ -29,6 +29,15 @@ checks.push({
   detail: process.env.WORKSPACE_ROOT ?? "missing",
 });
 
+checks.push({
+  name: "DEFAULT_PROJECT exists",
+  ok:
+    typeof process.env.WORKSPACE_ROOT === "string" &&
+    typeof process.env.DEFAULT_PROJECT === "string" &&
+    fs.existsSync(path.join(process.env.WORKSPACE_ROOT, process.env.DEFAULT_PROJECT)),
+  detail: process.env.DEFAULT_PROJECT ?? "missing",
+});
+
 let failed = false;
 for (const check of checks) {
   const marker = check.ok ? "PASS" : "FAIL";
