@@ -31,6 +31,17 @@
 
 ระบบจะไม่ให้เลือกไฟล์ที่ดูเหมือน secret เช่น `.env`, `.pem`, `.key`
 
+ถ้ายังมีไฟล์ที่ยังไม่ได้ commit ปุ่ม `Push ขึ้น GitHub` จะถูกปิดไว้ ให้ commit ให้เรียบร้อยก่อน
+
+## Deploy Vercel / GAS
+
+ในเมนู `Git` จะมีส่วน Deploy:
+
+- `Deploy Vercel`: สำหรับเว็บ/Next.js/Vite ที่เชื่อม Vercel แล้ว ระบบรัน `npx vercel deploy --prod`
+- `Deploy GAS`: สำหรับ Google Apps Script ที่ sync ด้วย clasp แล้ว ระบบรัน `npx clasp push -f` และ `npx clasp deploy`
+
+ก่อน deploy ควร commit และ push ให้เรียบร้อย เพราะระบบจะไม่ deploy ถ้า git ยังมีไฟล์ค้างที่ยังไม่ได้ commit
+
 ## 1. เปิดใช้งาน
 
 วิธีง่ายสุด:

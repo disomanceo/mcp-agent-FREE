@@ -69,6 +69,7 @@ The left sidebar opens real views:
 - Home: start/stop, MCP URL, active project
 - Projects: project list, type, description, git status, latest commit
 - Git: beginner-friendly commit/push workflow without typing PowerShell
+- Deploy: Vercel production deploy and Google Apps Script clasp deploy from the Git view
 - Logs: launcher/gateway/agent/ngrok logs for the current session
 - Settings: version, workspace, active project, permission mode, ports
 

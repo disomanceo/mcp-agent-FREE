@@ -133,6 +133,26 @@ app.post("/api/git/push", (req, res) => {
   }
 });
 
+app.post("/api/deploy/vercel", (req, res) => {
+  try {
+    const result = deployVercelFromGui(
+      String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""),
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/deploy/gas", (req, res) => {
+  try {
+    const result = deployGasFromGui(String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""));
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/logs/clear", (_req, res) => {
   logs.splice(0);
   res.json({ ok: true });
@@ -446,8 +466,71 @@ function gitPushFromGui(project) {
   return { ok: true, upstream, output: `${push.stdout}\n${push.stderr}`.trim() };
 }
 
-function requireGitProject(project) {
-  if (!project) throw new Error("เลือกโปรเจกต์ก่อน");
+function deployVercelFromGui(project) {
+  const projectPath = requireProjectDirectory(project);
+  assertCleanIfGit(projectPath);
+  const vercelConfig = fs.existsSync(path.join(projectPath, "vercel.json"));
+  const packageJson = readJson(path.join(projectPath, "package.json"));
+  if (!vercelConfig && !packageJson) {
+    throw new Error("This project does not look like a Vercel/Node project.");
+  }
+  const result = spawnSync("npx", ["vercel", "deploy", "--prod"], {
+    cwd: projectPath,
+    encoding: "utf8",
+    shell: true,
+    windowsHide: true,
+    timeout: 600_000,
+  });
+  const output = `${result.stdout}\n${result.stderr}`.trim();
+  if (result.status !== 0) {
+    throw new Error(output || "Vercel deploy failed");
+  }
+  log("deploy", `Vercel deploy complete for ${project}`);
+  return { ok: true, output };
+}
+
+function deployGasFromGui(project) {
+  const projectPath = requireProjectDirectory(project);
+  assertCleanIfGit(projectPath);
+  if (!fs.existsSync(path.join(projectPath, ".clasp.json"))) {
+    throw new Error("Missing .clasp.json. Sync or clone the GAS project with clasp first.");
+  }
+  const push = spawnSync("npx", ["clasp", "push", "-f"], {
+    cwd: projectPath,
+    encoding: "utf8",
+    shell: true,
+    windowsHide: true,
+    timeout: 300_000,
+  });
+  const pushOutput = `${push.stdout}\n${push.stderr}`.trim();
+  if (push.status !== 0) {
+    throw new Error(pushOutput || "clasp push failed");
+  }
+  const deploy = spawnSync("npx", ["clasp", "deploy"], {
+    cwd: projectPath,
+    encoding: "utf8",
+    shell: true,
+    windowsHide: true,
+    timeout: 300_000,
+  });
+  const deployOutput = `${deploy.stdout}\n${deploy.stderr}`.trim();
+  if (deploy.status !== 0) {
+    throw new Error(deployOutput || "clasp deploy failed");
+  }
+  log("deploy", `GAS deploy complete for ${project}`);
+  return { ok: true, output: `${pushOutput}\n${deployOutput}`.trim() };
+}
+
+function assertCleanIfGit(projectPath) {
+  if (!fs.existsSync(path.join(projectPath, ".git"))) return;
+  const dirty = gitSummary(projectPath, ["status", "--porcelain=v1"]).trim();
+  if (dirty) {
+    throw new Error("Commit all changes before deploy.");
+  }
+}
+
+function requireProjectDirectory(project) {
+  if (!project) throw new Error("Select a project first.");
   const workspaceRoot = requireWorkspaceRoot();
   if (project.includes("/") || project.includes("\\") || project === "." || project === "..") {
     throw new Error("Project must be a folder name under WORKSPACE_ROOT.");
@@ -456,6 +539,11 @@ function requireGitProject(project) {
   if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
     throw new Error(`Project not found: ${projectPath}`);
   }
+  return projectPath;
+}
+
+function requireGitProject(project) {
+  const projectPath = requireProjectDirectory(project);
   if (!fs.existsSync(path.join(projectPath, ".git"))) {
     throw new Error("โปรเจกต์นี้ยังไม่ใช่ Git repository");
   }
@@ -805,6 +893,8 @@ function icon(name) {
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
     refresh:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/></svg>',
+    rocket:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1 1-1.5 3-1.5 4.5 1.5 0 3.5-.5 4.5-1.5"/><path d="M9 15 5 19"/><path d="M15 9l-6 6"/><path d="M14 4h6v6c0 4.4-3.6 8-8 8H8v-4c0-4.4 3.6-10 6-10Z"/><path d="M15 9h.01"/></svg>',
     settings:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05a2.1 2.1 0 1 1-2.97 2.97l-.05-.05A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.08 1.64V21a2.1 2.1 0 1 1-4.2 0v-.08A1.8 1.8 0 0 0 8.45 19.3a1.8 1.8 0 0 0-1.98.36l-.05.05a2.1 2.1 0 1 1-2.97-2.97l.05-.05A1.8 1.8 0 0 0 3.86 14.7a1.8 1.8 0 0 0-1.64-1.08H2a2.1 2.1 0 1 1 0-4.2h.08A1.8 1.8 0 0 0 3.7 8.35a1.8 1.8 0 0 0-.36-1.98l-.05-.05A2.1 2.1 0 1 1 6.26 3.35l.05.05A1.8 1.8 0 0 0 8.3 3.76h.1A1.8 1.8 0 0 0 9.48 2.1V2a2.1 2.1 0 1 1 4.2 0v.08a1.8 1.8 0 0 0 1.08 1.64 1.8 1.8 0 0 0 1.98-.36l.05-.05a2.1 2.1 0 1 1 2.97 2.97l-.05.05A1.8 1.8 0 0 0 19.36 8.3v.1A1.8 1.8 0 0 0 21 9.48H21a2.1 2.1 0 1 1 0 4.2h-.08A1.8 1.8 0 0 0 19.4 15Z"/></svg>',
     shield:
@@ -1246,6 +1336,12 @@ function renderPage() {
         background: var(--panel-soft);
         color: var(--muted);
       }
+      .deploy-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }
       pre {
         height: 220px;
         margin: 0;
@@ -1263,7 +1359,7 @@ function renderPage() {
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
         .sidebar { position: relative; height: auto; }
-        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid, .git-steps, .file-row { grid-template-columns: 1fr; }
+        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid, .git-steps, .file-row, .deploy-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .content { padding: 18px; }
@@ -1430,6 +1526,18 @@ function renderPage() {
               </div>
               <div id="gitOutput" class="git-output">กด “ตรวจสถานะ” เพื่อเริ่ม</div>
             </div>
+            <div class="deploy-grid">
+              <div class="step-card">
+                <strong>Deploy Vercel</strong>
+                <p class="hint">เหมาะกับ Next.js/Vite/เว็บที่เชื่อม Vercel แล้ว ควร commit และ push ให้เรียบร้อยก่อน</p>
+                <button id="deployVercel">${icon("rocket")} Deploy Vercel</button>
+              </div>
+              <div class="step-card">
+                <strong>Deploy GAS / clasp</strong>
+                <p class="hint">ต้องมี .clasp.json ในโปรเจกต์ก่อน ระบบจะรัน clasp push และ clasp deploy</p>
+                <button id="deployGas">${icon("rocket")} Deploy GAS</button>
+              </div>
+            </div>
           </section>
         </div>
 
@@ -1487,6 +1595,8 @@ function renderPage() {
         gitCommit: document.querySelector("#gitCommit"),
         gitPush: document.querySelector("#gitPush"),
         gitOutput: document.querySelector("#gitOutput"),
+        deployVercel: document.querySelector("#deployVercel"),
+        deployGas: document.querySelector("#deployGas"),
         settingsVersion: document.querySelector("#settingsVersion"),
         settingsWorkspace: document.querySelector("#settingsWorkspace"),
         settingsProject: document.querySelector("#settingsProject"),
@@ -1560,6 +1670,22 @@ function renderPage() {
           await refreshGitStatus();
         }
       });
+      els.deployVercel.addEventListener("click", async () => {
+        if (!confirm("ยืนยัน Deploy Vercel production? ควร commit/push ให้เรียบร้อยก่อน")) return;
+        els.gitOutput.textContent = "กำลัง deploy Vercel...";
+        const response = await post("/api/deploy/vercel", { project: els.gitProject.value });
+        if (response?.ok) {
+          els.gitOutput.textContent = "Vercel deploy สำเร็จ\\n" + (response.output || "");
+        }
+      });
+      els.deployGas.addEventListener("click", async () => {
+        if (!confirm("ยืนยัน Deploy Google Apps Script ด้วย clasp?")) return;
+        els.gitOutput.textContent = "กำลัง deploy GAS...";
+        const response = await post("/api/deploy/gas", { project: els.gitProject.value });
+        if (response?.ok) {
+          els.gitOutput.textContent = "GAS deploy สำเร็จ\\n" + (response.output || "");
+        }
+      });
 
       function showView(name) {
         els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === name));
@@ -1604,8 +1730,12 @@ function renderPage() {
         }
         if (!data.files.length) {
           els.gitFiles.innerHTML = '<div class="git-output">ไม่มีไฟล์เปลี่ยนแปลง ตอนนี้ working tree clean</div>';
+          els.gitPush.disabled = false;
+          els.gitOutput.textContent = "พร้อม Push ได้ ถ้า commit ล่าสุดยังไม่ได้ส่งขึ้น GitHub";
           return;
         }
+        els.gitPush.disabled = true;
+        els.gitOutput.textContent = "มีไฟล์ที่ยังไม่ได้ commit ให้ Commit ไฟล์ที่เลือกก่อน แล้วค่อย Push";
         els.gitFiles.innerHTML = data.files.map((file) => {
           const disabled = file.safe ? "" : "disabled";
           const note = file.safe ? "" : " · blocked: secret-looking";
