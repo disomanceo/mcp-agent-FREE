@@ -475,10 +475,13 @@ function deployVercelFromGui(project) {
   if (!vercelConfig && !packageJson) {
     throw new Error("This project does not look like a Vercel/Node project.");
   }
-  const result = spawnSync("npx", ["vercel", "deploy", "--prod"], {
+  const result = spawnSync(packageRunnerCommand(), packageRunnerArgs("vercel", [
+    "deploy",
+    "--prod",
+    "--yes",
+  ]), {
     cwd: projectPath,
     encoding: "utf8",
-    shell: true,
     windowsHide: true,
     timeout: 600_000,
   });
@@ -496,10 +499,9 @@ function deployGasFromGui(project) {
   if (!fs.existsSync(path.join(projectPath, ".clasp.json"))) {
     throw new Error("Missing .clasp.json. Sync or clone the GAS project with clasp first.");
   }
-  const push = spawnSync("npx", ["clasp", "push", "-f"], {
+  const push = spawnSync(packageRunnerCommand(), packageRunnerArgs("clasp", ["push", "-f"]), {
     cwd: projectPath,
     encoding: "utf8",
-    shell: true,
     windowsHide: true,
     timeout: 300_000,
   });
@@ -507,10 +509,9 @@ function deployGasFromGui(project) {
   if (push.status !== 0) {
     throw new Error(pushOutput || "clasp push failed");
   }
-  const deploy = spawnSync("npx", ["clasp", "deploy"], {
+  const deploy = spawnSync(packageRunnerCommand(), packageRunnerArgs("clasp", ["deploy"]), {
     cwd: projectPath,
     encoding: "utf8",
-    shell: true,
     windowsHide: true,
     timeout: 300_000,
   });
@@ -520,6 +521,28 @@ function deployGasFromGui(project) {
   }
   log("deploy", `GAS deploy complete for ${project}`);
   return { ok: true, output: `${pushOutput}\n${deployOutput}`.trim() };
+}
+
+function packageRunnerCommand() {
+  if (process.platform === "win32") return process.execPath;
+  return "npx";
+}
+
+function packageRunnerArgs(command, args) {
+  if (process.platform !== "win32") return [command, ...args];
+  return [findNpxCli(), command, ...args];
+}
+
+function findNpxCli() {
+  const candidates = [
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "nodejs", "node_modules", "npm", "bin", "npx-cli.js"),
+    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js"),
+  ];
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) {
+    throw new Error("Cannot find npx-cli.js. Reinstall Node.js or run npm install -g npm.");
+  }
+  return found;
 }
 
 function assertCleanIfGit(projectPath) {
@@ -1673,18 +1696,32 @@ function renderPage() {
       });
       els.deployVercel.addEventListener("click", async () => {
         if (!confirm("ยืนยัน Deploy Vercel production? ควร commit/push ให้เรียบร้อยก่อน")) return;
+        els.deployVercel.disabled = true;
         els.gitOutput.textContent = "กำลัง deploy Vercel...";
-        const response = await post("/api/deploy/vercel", { project: els.gitProject.value });
-        if (response?.ok) {
-          els.gitOutput.textContent = "Vercel deploy สำเร็จ\\n" + (response.output || "");
+        try {
+          const response = await post("/api/deploy/vercel", { project: els.gitProject.value });
+          if (response?.ok) {
+            els.gitOutput.textContent = "Vercel deploy สำเร็จ\\n" + (response.output || "");
+          } else {
+            els.gitOutput.textContent = "Vercel deploy ไม่สำเร็จ ดูรายละเอียดจาก popup แล้วลองกด Deploy ใหม่";
+          }
+        } finally {
+          els.deployVercel.disabled = false;
         }
       });
       els.deployGas.addEventListener("click", async () => {
         if (!confirm("ยืนยัน Deploy Google Apps Script ด้วย clasp?")) return;
+        els.deployGas.disabled = true;
         els.gitOutput.textContent = "กำลัง deploy GAS...";
-        const response = await post("/api/deploy/gas", { project: els.gitProject.value });
-        if (response?.ok) {
-          els.gitOutput.textContent = "GAS deploy สำเร็จ\\n" + (response.output || "");
+        try {
+          const response = await post("/api/deploy/gas", { project: els.gitProject.value });
+          if (response?.ok) {
+            els.gitOutput.textContent = "GAS deploy สำเร็จ\\n" + (response.output || "");
+          } else {
+            els.gitOutput.textContent = "GAS deploy ไม่สำเร็จ ดูรายละเอียดจาก popup แล้วลองกด Deploy ใหม่";
+          }
+        } finally {
+          els.deployGas.disabled = false;
         }
       });
 
