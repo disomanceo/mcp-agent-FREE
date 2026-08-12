@@ -108,7 +108,8 @@ app.post("/api/stop", (_req, res) => {
   cleanup();
   state = { ...state, phase: "stopped", mcpUrl: "", startedAt: null };
   log("launcher", "Stopped Gateway, Agent, and ngrok.");
-  res.json({ ok: true });
+  res.json({ ok: true, exiting: true });
+  setTimeout(shutdown, 250);
 });
 
 app.post("/api/git/commit", (req, res) => {

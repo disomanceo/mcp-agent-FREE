@@ -238,13 +238,9 @@ irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/insta
 
 ## 9. ปิดโปรแกรม
 
-กลับไปที่หน้าต่าง `Personal MCP Agent` แล้วกด:
+กดปุ่ม `Stop` ในหน้า GUI ได้เลย ระบบจะหยุด Gateway, Desktop Agent, ngrok และปิด launcher process ให้เอง
 
-```text
-Ctrl + C
-```
-
-ถ้าถามว่าจะหยุดไหม ให้กด `Y` แล้ว Enter
+ถ้าเปิดด้วย PowerShell เองและต้องการหยุดแบบ manual ให้กด `Ctrl + C`
 
 ## 10. ปัญหาที่พบบ่อย
 
