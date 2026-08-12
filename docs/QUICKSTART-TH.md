@@ -15,8 +15,21 @@
 
 - `หน้าหลัก`: ใช้ Start/Stop Agent, copy MCP URL, เลือก active project แบบเร็ว
 - `โปรเจกต์`: แสดงรายชื่อโปรเจกต์ทั้งหมด พร้อมชนิดโปรเจกต์, คำอธิบาย, สถานะ git และ commit ล่าสุด
+- `Git`: ใช้ commit/push แบบไม่ต้องพิมพ์ PowerShell โดยเลือกไฟล์ ใส่ข้อความ commit แล้วกดปุ่ม
 - `บันทึกการทำงาน`: log ของ launcher, gateway, desktop agent และ ngrok ใช้ตรวจว่าเชื่อมต่อสำเร็จหรือ error ตรงไหน
 - `ตั้งค่า`: ข้อมูลระบบ เช่น version, workspace, active project, permission mode, GUI port และ Gateway port
+
+## Commit / Push แบบง่าย
+
+1. เปิดเมนู `Git`
+2. เลือกโปรเจกต์
+3. กด `ตรวจสถานะ`
+4. เลือกไฟล์ที่ต้องการ commit หรือกด `เลือกทั้งหมดที่ปลอดภัย`
+5. ตรวจหรือแก้ `Commit message`
+6. กด `Commit ไฟล์ที่เลือก`
+7. เมื่อ commit สำเร็จแล้ว กด `Push ขึ้น GitHub`
+
+ระบบจะไม่ให้เลือกไฟล์ที่ดูเหมือน secret เช่น `.env`, `.pem`, `.key`
 
 ## 1. เปิดใช้งาน
 

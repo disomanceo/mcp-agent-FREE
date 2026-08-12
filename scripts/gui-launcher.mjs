@@ -63,6 +63,14 @@ app.get("/api/projects/details", (_req, res) => {
   }
 });
 
+app.get("/api/git/status", (_req, res) => {
+  try {
+    res.json(getGitStatus(String(_req.query.project ?? process.env.DEFAULT_PROJECT ?? "")));
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/projects/default", (req, res) => {
   try {
     const project = String(req.body?.project ?? "");
@@ -101,6 +109,28 @@ app.post("/api/stop", (_req, res) => {
   state = { ...state, phase: "stopped", mcpUrl: "", startedAt: null };
   log("launcher", "Stopped Gateway, Agent, and ngrok.");
   res.json({ ok: true });
+});
+
+app.post("/api/git/commit", (req, res) => {
+  try {
+    const result = gitCommitFromGui({
+      project: String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""),
+      files: Array.isArray(req.body?.files) ? req.body.files.map(String) : [],
+      message: String(req.body?.message ?? ""),
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/git/push", (req, res) => {
+  try {
+    const result = gitPushFromGui(String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""));
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
 });
 
 app.post("/api/logs/clear", (_req, res) => {
@@ -335,6 +365,150 @@ function parseLatestCommit(value) {
   if (!text) return null;
   const [hash, date, ...messageParts] = text.split("|");
   return { hash, date, message: messageParts.join("|") };
+}
+
+function getGitStatus(project) {
+  const projectPath = requireGitProject(project);
+  const branch = gitSummary(projectPath, ["branch", "--show-current"]).trim() || "(detached)";
+  const remote = gitSummary(projectPath, ["remote", "get-url", "origin"]).trim();
+  const latestCommit = parseLatestCommit(
+    gitSummary(projectPath, ["log", "-1", "--pretty=format:%h|%ci|%s"]),
+  );
+  const porcelain = gitSummary(projectPath, ["status", "--porcelain=v1"]);
+  const files = porcelain.split(/\r?\n/).map(parsePorcelainLine).filter(Boolean);
+  const suggestedMessage = suggestCommitMessage(files);
+  return { project, branch, remote, latestCommit, files, suggestedMessage };
+}
+
+function gitCommitFromGui({ project, files, message }) {
+  const projectPath = requireGitProject(project);
+  const selectedFiles = files.filter(Boolean);
+  if (selectedFiles.length === 0) {
+    throw new Error("เลือกไฟล์อย่างน้อย 1 ไฟล์ก่อน commit");
+  }
+  if (!message.trim()) {
+    throw new Error("ใส่ commit message ก่อน");
+  }
+  for (const file of selectedFiles) {
+    assertSafeGitPath(file);
+  }
+
+  const add = spawnSync("git", ["add", "--", ...selectedFiles], {
+    cwd: projectPath,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 60_000,
+  });
+  if (add.status !== 0) {
+    throw new Error(add.stderr || "git add failed");
+  }
+
+  const commit = spawnSync("git", ["commit", "-m", message.trim()], {
+    cwd: projectPath,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 60_000,
+  });
+  if (commit.status !== 0) {
+    throw new Error(commit.stderr || commit.stdout || "git commit failed");
+  }
+
+  const hash = gitSummary(projectPath, ["rev-parse", "--short", "HEAD"]).trim();
+  log("git", `Committed ${hash}: ${message.trim()}`);
+  return { ok: true, hash, output: commit.stdout.trim() };
+}
+
+function gitPushFromGui(project) {
+  const projectPath = requireGitProject(project);
+  const upstream = gitSummary(projectPath, [
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{u}",
+  ]).trim();
+  if (!upstream) {
+    throw new Error("branch นี้ยังไม่มี upstream ให้ตั้ง upstream ใน PowerShell ครั้งแรกก่อน");
+  }
+  const dirty = gitSummary(projectPath, ["status", "--porcelain=v1"]).trim();
+  if (dirty) {
+    throw new Error("ยังมีไฟล์ที่ยังไม่ได้ commit ให้ commit ให้เรียบร้อยก่อน push");
+  }
+  const push = spawnSync("git", ["push"], {
+    cwd: projectPath,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 120_000,
+  });
+  if (push.status !== 0) {
+    throw new Error(push.stderr || push.stdout || "git push failed");
+  }
+  log("git", `Pushed ${project} to ${upstream}`);
+  return { ok: true, upstream, output: `${push.stdout}\n${push.stderr}`.trim() };
+}
+
+function requireGitProject(project) {
+  if (!project) throw new Error("เลือกโปรเจกต์ก่อน");
+  const workspaceRoot = requireWorkspaceRoot();
+  if (project.includes("/") || project.includes("\\") || project === "." || project === "..") {
+    throw new Error("Project must be a folder name under WORKSPACE_ROOT.");
+  }
+  const projectPath = path.join(workspaceRoot, project);
+  if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
+    throw new Error(`Project not found: ${projectPath}`);
+  }
+  if (!fs.existsSync(path.join(projectPath, ".git"))) {
+    throw new Error("โปรเจกต์นี้ยังไม่ใช่ Git repository");
+  }
+  return projectPath;
+}
+
+function parsePorcelainLine(line) {
+  if (!line.trim()) return null;
+  const status = line.slice(0, 2);
+  const rawPath = line.slice(3).trim();
+  const filePath = rawPath.includes(" -> ") ? rawPath.split(" -> ").at(-1) : rawPath;
+  return {
+    path: filePath,
+    status,
+    label: gitStatusLabel(status),
+    safe: isSafeGitPath(filePath),
+  };
+}
+
+function gitStatusLabel(status) {
+  if (status.includes("?")) return "new";
+  if (status.includes("D")) return "deleted";
+  if (status.includes("R")) return "renamed";
+  if (status.includes("A")) return "added";
+  if (status.includes("M")) return "modified";
+  return "changed";
+}
+
+function suggestCommitMessage(files) {
+  if (files.length === 0) return "";
+  const labels = new Set(files.map((file) => file.label));
+  if (labels.has("added") || labels.has("new")) return "feat: add project updates";
+  if (labels.has("deleted")) return "chore: remove unused files";
+  return "fix: update project files";
+}
+
+function assertSafeGitPath(filePath) {
+  if (!isSafeGitPath(filePath)) {
+    throw new Error(`ไฟล์นี้ดูเหมือนเป็น secret จึงไม่อนุญาตให้ commit: ${filePath}`);
+  }
+}
+
+function isSafeGitPath(filePath) {
+  const normalized = String(filePath).replaceAll("\\", "/").toLowerCase();
+  const baseName = path.posix.basename(normalized);
+  return !(
+    baseName === ".env" ||
+    (baseName.startsWith(".env.") && baseName !== ".env.example") ||
+    baseName.endsWith(".pem") ||
+    baseName.endsWith(".key") ||
+    baseName.includes("secret") ||
+    ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"].includes(baseName)
+  );
 }
 
 function setDefaultProject(project) {
@@ -623,6 +797,7 @@ function icon(name) {
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.5V20l4-2v-5.5L22 3Z"/></svg>',
     folder:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+    git: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.2 8.2 15.8 15.8"/><path d="M6 9v6"/></svg>',
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
     monitor:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>',
@@ -640,6 +815,8 @@ function icon(name) {
     sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
     trash:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>',
+    upload:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M20 16v4H4v-4"/></svg>',
   };
   return icons[name] ?? "";
 }
@@ -1028,6 +1205,47 @@ function renderPage() {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 14px;
       }
+      .git-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .step-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        padding: 14px;
+      }
+      .step-card strong { display: block; margin-bottom: 6px; }
+      .file-list {
+        display: grid;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .file-row {
+        display: grid;
+        grid-template-columns: 28px 92px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel-soft);
+      }
+      .file-row input { min-width: auto; min-height: auto; }
+      .file-path {
+        font-family: Consolas, "Courier New", monospace;
+        overflow-wrap: anywhere;
+      }
+      .git-output {
+        min-height: 42px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
       pre {
         height: 220px;
         margin: 0;
@@ -1045,7 +1263,7 @@ function renderPage() {
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
         .sidebar { position: relative; height: auto; }
-        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid { grid-template-columns: 1fr; }
+        .hero-card, .grid, .info-grid, .project-card, .project-meta, .settings-grid, .git-steps, .file-row { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .content { padding: 18px; }
@@ -1069,6 +1287,7 @@ function renderPage() {
         <nav class="nav">
           <button class="nav-item active" data-view="home">${icon("home")} หน้าหลัก</button>
           <button class="nav-item" data-view="projects">${icon("folder")} โปรเจกต์</button>
+          <button class="nav-item" data-view="git">${icon("git")} Git</button>
           <button class="nav-item" data-view="logs">${icon("file")} บันทึกการทำงาน</button>
           <button class="nav-item" data-view="settings">${icon("settings")} ตั้งค่า</button>
         </nav>
@@ -1182,6 +1401,38 @@ function renderPage() {
           </section>
         </div>
 
+        <div id="view-git" class="view">
+          <section class="card">
+            <div class="logs-head">
+              <div>
+                <div class="title" style="margin:0">Git Assistant</div>
+                <p class="hint">สำหรับคนไม่ถนัด PowerShell: ตรวจไฟล์ เลือกไฟล์ ใส่ข้อความ แล้วกด Commit / Push ตามลำดับ</p>
+              </div>
+              <button id="gitRefresh">${icon("refresh")} ตรวจสถานะ</button>
+            </div>
+            <div class="git-steps">
+              <div class="step-card"><strong>1. ตรวจไฟล์</strong><span class="hint">ดูว่ามีไฟล์อะไรเปลี่ยนบ้าง</span></div>
+              <div class="step-card"><strong>2. Commit</strong><span class="hint">เลือกไฟล์และใส่ข้อความสั้น ๆ</span></div>
+              <div class="step-card"><strong>3. Push</strong><span class="hint">ส่ง commit ขึ้น GitHub เมื่อพร้อม</span></div>
+            </div>
+            <div class="row">
+              <select id="gitProject"></select>
+              <button id="gitSelectAll">${icon("check")} เลือกทั้งหมดที่ปลอดภัย</button>
+            </div>
+            <div id="gitSummary" class="hint" style="margin-top:10px"></div>
+            <div id="gitFiles" class="file-list"></div>
+            <div class="column">
+              <label class="title" for="commitMessage" style="margin:0">Commit message</label>
+              <input id="commitMessage" placeholder="เช่น fix: update payment tracker UI" />
+              <div class="row">
+                <button id="gitCommit" class="primary">${icon("check")} Commit ไฟล์ที่เลือก</button>
+                <button id="gitPush">${icon("upload")} Push ขึ้น GitHub</button>
+              </div>
+              <div id="gitOutput" class="git-output">กด “ตรวจสถานะ” เพื่อเริ่ม</div>
+            </div>
+          </section>
+        </div>
+
         <div id="view-settings" class="view">
           <section class="card">
             <div class="title">ตั้งค่า คืออะไร?</div>
@@ -1227,6 +1478,15 @@ function renderPage() {
         clearLogsFull: document.querySelector("#clearLogsFull"),
         refreshProjects: document.querySelector("#refreshProjects"),
         projectDetails: document.querySelector("#projectDetails"),
+        gitProject: document.querySelector("#gitProject"),
+        gitRefresh: document.querySelector("#gitRefresh"),
+        gitSelectAll: document.querySelector("#gitSelectAll"),
+        gitFiles: document.querySelector("#gitFiles"),
+        gitSummary: document.querySelector("#gitSummary"),
+        commitMessage: document.querySelector("#commitMessage"),
+        gitCommit: document.querySelector("#gitCommit"),
+        gitPush: document.querySelector("#gitPush"),
+        gitOutput: document.querySelector("#gitOutput"),
         settingsVersion: document.querySelector("#settingsVersion"),
         settingsWorkspace: document.querySelector("#settingsWorkspace"),
         settingsProject: document.querySelector("#settingsProject"),
@@ -1273,6 +1533,33 @@ function renderPage() {
       els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
       els.clearLogsFull.addEventListener("click", () => post("/api/logs/clear"));
       els.refreshProjects.addEventListener("click", refreshAll);
+      els.gitRefresh.addEventListener("click", refreshGitStatus);
+      els.gitProject.addEventListener("change", refreshGitStatus);
+      els.gitSelectAll.addEventListener("click", () => {
+        document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
+          item.checked = true;
+        });
+      });
+      els.gitCommit.addEventListener("click", async () => {
+        const files = Array.from(document.querySelectorAll(".git-file-check:checked")).map((item) => item.value);
+        const response = await post("/api/git/commit", {
+          project: els.gitProject.value,
+          files,
+          message: els.commitMessage.value,
+        });
+        if (response?.ok) {
+          els.gitOutput.textContent = "Commit สำเร็จ: " + response.hash;
+          await refreshGitStatus();
+        }
+      });
+      els.gitPush.addEventListener("click", async () => {
+        if (!confirm("ยืนยัน Push ขึ้น GitHub? ควร commit ให้เรียบร้อยและตรวจ branch ก่อน")) return;
+        const response = await post("/api/git/push", { project: els.gitProject.value });
+        if (response?.ok) {
+          els.gitOutput.textContent = "Push สำเร็จ: " + response.upstream;
+          await refreshGitStatus();
+        }
+      });
 
       function showView(name) {
         els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === name));
@@ -1288,8 +1575,46 @@ function renderPage() {
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
           alert(data.error || "Request failed");
+          return null;
         }
+        const data = await response.json().catch(() => ({ ok: true }));
         await refreshAll();
+        return data;
+      }
+
+      async function refreshGitStatus() {
+        if (!els.gitProject.value) {
+          els.gitFiles.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ให้เลือก</div>';
+          return;
+        }
+        const response = await fetch("/api/git/status?project=" + encodeURIComponent(els.gitProject.value));
+        const data = await response.json();
+        if (!response.ok) {
+          els.gitSummary.textContent = data.error || "อ่านสถานะ git ไม่ได้";
+          els.gitFiles.innerHTML = "";
+          return;
+        }
+        renderGitStatus(data);
+      }
+
+      function renderGitStatus(data) {
+        els.gitSummary.textContent = "Branch: " + data.branch + " · Remote: " + (data.remote || "-") + " · Commit ล่าสุด: " + (data.latestCommit ? data.latestCommit.hash + " " + data.latestCommit.message : "-");
+        if (!els.commitMessage.value && data.suggestedMessage) {
+          els.commitMessage.value = data.suggestedMessage;
+        }
+        if (!data.files.length) {
+          els.gitFiles.innerHTML = '<div class="git-output">ไม่มีไฟล์เปลี่ยนแปลง ตอนนี้ working tree clean</div>';
+          return;
+        }
+        els.gitFiles.innerHTML = data.files.map((file) => {
+          const disabled = file.safe ? "" : "disabled";
+          const note = file.safe ? "" : " · blocked: secret-looking";
+          return '<label class="file-row">'
+            + '<input class="git-file-check" type="checkbox" value="' + escapeHtml(file.path) + '" ' + disabled + ' />'
+            + '<span class="badge">' + escapeHtml(file.label) + '</span>'
+            + '<span class="file-path">' + escapeHtml(file.path) + '<span class="hint">' + note + '</span></span>'
+            + '</label>';
+        }).join("");
       }
 
       async function refreshAll() {
@@ -1336,6 +1661,15 @@ function renderPage() {
           option.textContent = project === data.defaultProject ? project + " (active)" : project;
           option.selected = project === selected;
           els.projects.append(option);
+        }
+        const gitSelected = els.gitProject.value || data.defaultProject;
+        els.gitProject.innerHTML = "";
+        for (const project of data.projects || []) {
+          const option = document.createElement("option");
+          option.value = project;
+          option.textContent = project === data.defaultProject ? project + " (active)" : project;
+          option.selected = project === gitSelected;
+          els.gitProject.append(option);
         }
       }
 
