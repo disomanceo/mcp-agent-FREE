@@ -114,6 +114,7 @@ This repository is linked to a new Vercel project:
 ```text
 Vercel Project: disomanceo/personal-mcp-agent
 GitHub Repo: https://github.com/disomanceo/personal-mcp-agent
+Production URL: https://personal-mcp-agent.vercel.app
 ```
 
 Important: the Phase 1 Gateway uses a long-lived WebSocket connection to the Desktop Agent. Vercel Functions are not the right runtime for that WebSocket relay by themselves. For full cloud operation, run the Gateway on a persistent WebSocket-capable host, or use Vercel for HTTP/MCP-facing pieces and a separate relay service for Desktop Agent WebSockets.

@@ -17,6 +17,7 @@ Phase 1 Complete: Secure Read/Build MVP verified locally
 - runtime smoke test for Gateway, Desktop Agent, WebSocket auth/connection, MCP tools, git tools, and npm build/test
 - local git repository initialized for this project only
 - GitHub repository connected to Vercel project `disomanceo/personal-mcp-agent`
+- Vercel static project status page added for successful production deployment
 
 ## Pending
 
@@ -42,4 +43,4 @@ Phase 1 Complete: Secure Read/Build MVP verified locally
 
 ## Next Step
 
-- Configure production environment variables in Vercel only when a deployable HTTP/MCP entrypoint is selected.
+- Select and configure a persistent Gateway host for production WebSocket connectivity.
