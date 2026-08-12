@@ -43,6 +43,12 @@ MCP URL: https://xxxxx.ngrok-free.app/mcp
 
 Use that URL in ChatGPT.
 
+## Easy Thai guide
+
+For a simple step-by-step guide after installation, read:
+
+[QUICKSTART-TH.md](QUICKSTART-TH.md)
+
 ## Change project
 
 ```powershell
