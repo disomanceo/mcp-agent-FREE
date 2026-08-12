@@ -51,9 +51,36 @@ describe("tool argument validation", () => {
     expect(auditEvent).toMatchObject({
       tool: "write_file",
       project: "Demo",
-      summary: "created src/hello.ts (30 bytes)",
+      summary: "created src/hello.ts +1 -0 lines (30 bytes)",
       success: true,
     });
+  });
+
+  it("records write_file line deltas for updated files", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    fs.mkdirSync(path.join(root, "Demo"));
+    fs.writeFileSync(path.join(root, "Demo", "notes.md"), "one\ntwo\nthree\n");
+    const auditLogPath = path.join(root, "audit.jsonl");
+
+    const result = await executeTool(
+      "write_file",
+      {
+        project: "Demo",
+        path: "notes.md",
+        content: "one\ntwo\nthree\nfour\nfive\n",
+        overwrite: true,
+      },
+      {
+        deviceId: "test",
+        workspaceRoot: root,
+        permissionMode: "WORK",
+        auditLogPath,
+      },
+    );
+
+    expect(result).toMatchObject({ path: "notes.md", lineDelta: { added: 2, removed: 0 } });
+    const auditEvent = JSON.parse(fs.readFileSync(auditLogPath, "utf8").trim());
+    expect(auditEvent.summary).toBe("updated notes.md +2 -0 lines (24 bytes)");
   });
 
   it("uses defaultProject when project is omitted", async () => {

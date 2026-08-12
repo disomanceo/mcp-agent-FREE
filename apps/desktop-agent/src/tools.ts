@@ -91,7 +91,7 @@ export async function executeTool(
         const parsed = writeFileArgsSchema.parse(input);
         project = resolveToolProject(parsed.project, ctx);
         const result = await writeFile(ctx.workspaceRoot, { ...parsed, project });
-        summary = `${result.created ? "created" : "updated"} ${result.path} (${result.sizeBytes} bytes)`;
+        summary = `${result.created ? "created" : "updated"} ${result.path} ${formatLineDelta(result.lineDelta)} (${result.sizeBytes} bytes)`;
         return result;
       }
       case "git_status":
@@ -239,6 +239,7 @@ async function writeFile(
   }
 
   const existing = await fs.stat(filePath).catch(() => undefined);
+  const beforeText = existing?.isFile() ? await fs.readFile(filePath, "utf8") : "";
   if (existing?.isDirectory()) {
     throw new AgentError("PATH_NOT_ALLOWED", "Cannot write over a directory");
   }
@@ -257,12 +258,32 @@ async function writeFile(
   }
 
   await fs.writeFile(filePath, encoded, "utf8");
+  const lineDelta = diffLineCount(beforeText, options.content);
   return {
     path: options.path,
     sizeBytes: encoded.byteLength,
     created: !existing,
     overwritten: Boolean(existing),
+    lineDelta,
   };
+}
+
+function diffLineCount(before: string, after: string) {
+  const beforeLines = countContentLines(before);
+  const afterLines = countContentLines(after);
+  if (afterLines >= beforeLines) {
+    return { added: afterLines - beforeLines, removed: 0 };
+  }
+  return { added: 0, removed: beforeLines - afterLines };
+}
+
+function countContentLines(value: string): number {
+  if (!value) return 0;
+  return value.endsWith("\n") ? value.split(/\r?\n/).length - 1 : value.split(/\r?\n/).length;
+}
+
+function formatLineDelta(delta: { added: number; removed: number }) {
+  return `+${delta.added} -${delta.removed} lines`;
 }
 
 async function gitCommand(

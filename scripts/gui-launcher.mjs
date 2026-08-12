@@ -1051,9 +1051,12 @@ function log(label, text) {
 }
 
 function combinedLogs() {
-  return [...logs, ...readAuditLogs()]
+  const merged = [...logs, ...readAuditLogs()]
     .sort((a, b) => Date.parse(a.timestamp ?? "") - Date.parse(b.timestamp ?? ""))
     .slice(-300);
+  const complete = completionLog(merged);
+  if (complete) merged.push(complete);
+  return merged;
 }
 
 function readAuditLogs() {
@@ -1089,6 +1092,29 @@ function formatAuditEvent(event) {
   const summary = event.summary ? ` · ${event.summary}` : "";
   const duration = Number.isFinite(event.durationMs) ? ` (${event.durationMs}ms)` : "";
   return `${project}${event.tool}${summary} · ${status}${duration}`;
+}
+
+function completionLog(items) {
+  const latest = [...items].reverse().find((item) => item.label === "code");
+  if (!latest?.success) return null;
+  const completeTools = [
+    "write_file",
+    "git_stage",
+    "git_commit",
+    "git_push",
+    "npm_lint",
+    "npm_build",
+    "npm_test",
+  ];
+  if (!completeTools.some((tool) => latest.text.includes(tool))) return null;
+  const now = new Date();
+  return {
+    timestamp: now.toISOString(),
+    time: now.toLocaleTimeString(),
+    label: "complete",
+    text: "CODE COMPLETE · รอบล่าสุดเสร็จแล้ว ตรวจ Git แล้วกด Push ได้เมื่อพร้อม",
+    success: true,
+  };
 }
 
 function clearAuditLog() {
@@ -1643,6 +1669,19 @@ function renderPage() {
       .log-line { color: #64e48f; }
       .log-line.code { color: #38bdf8; }
       .log-line.error { color: #ff8a92; }
+      .log-line.complete {
+        color: #86efac;
+        font-weight: 800;
+        animation: pulseComplete 1.4s ease-in-out 3;
+      }
+      #logsFull {
+        height: calc(100vh - 245px);
+        min-height: 520px;
+      }
+      @keyframes pulseComplete {
+        0%, 100% { text-shadow: 0 0 0 rgba(134, 239, 172, 0); }
+        50% { text-shadow: 0 0 12px rgba(134, 239, 172, 0.65); }
+      }
       svg { width: 20px; height: 20px; flex: 0 0 auto; }
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
@@ -2081,8 +2120,8 @@ function renderPage() {
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
         const logHtml = data.logs.map((item) => {
-          const lineClass = item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
-          const level = item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
+          const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
+          const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
           return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text);
         }).join("\\n");
         els.logs.innerHTML = logHtml;
