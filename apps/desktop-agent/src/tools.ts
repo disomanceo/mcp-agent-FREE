@@ -15,6 +15,7 @@ import {
   listFilesArgsSchema,
   projectArgsSchema,
   readFileArgsSchema,
+  writeFileArgsSchema,
 } from "@personal-mcp-agent/protocol";
 
 export type ToolContext = {
@@ -76,12 +77,20 @@ export async function executeTool(
         project = parsed.project;
         return readFile(ctx.workspaceRoot, parsed.project, parsed.path, parsed.maxBytes);
       }
+      case "write_file": {
+        const parsed = writeFileArgsSchema.parse(input);
+        project = parsed.project;
+        return writeFile(ctx.workspaceRoot, parsed);
+      }
       case "git_status":
         project = projectArgsSchema.parse(input).project;
         return gitCommand(ctx.workspaceRoot, project, "git_status");
       case "git_diff":
         project = projectArgsSchema.parse(input).project;
         return gitCommand(ctx.workspaceRoot, project, "git_diff");
+      case "npm_lint":
+        project = projectArgsSchema.parse(input).project;
+        return npmCommand(ctx.workspaceRoot, project, "npm_lint");
       case "npm_build":
         project = projectArgsSchema.parse(input).project;
         return npmCommand(ctx.workspaceRoot, project, "npm_build");
@@ -145,6 +154,51 @@ async function readFile(
   return { path: relativePath, content: buffer.toString("utf8"), sizeBytes: buffer.byteLength };
 }
 
+async function writeFile(
+  workspaceRoot: string,
+  options: {
+    project: string;
+    path: string;
+    content: string;
+    createDirs: boolean;
+    overwrite: boolean;
+    maxBytes: number;
+  },
+) {
+  assertNotSecretPath(options.path);
+  const filePath = resolveProjectPath(workspaceRoot, options.project, options.path);
+  const encoded = Buffer.from(options.content, "utf8");
+  if (encoded.byteLength > options.maxBytes) {
+    throw new AgentError("FILE_TOO_LARGE", "Content exceeds the maximum allowed size");
+  }
+
+  const existing = await fs.stat(filePath).catch(() => undefined);
+  if (existing?.isDirectory()) {
+    throw new AgentError("PATH_NOT_ALLOWED", "Cannot write over a directory");
+  }
+  if (existing && !options.overwrite) {
+    throw new AgentError("INVALID_ARGUMENTS", "File exists and overwrite is false");
+  }
+
+  const parent = path.dirname(filePath);
+  if (options.createDirs) {
+    await fs.mkdir(parent, { recursive: true });
+  } else {
+    const parentStat = await fs.stat(parent).catch(() => undefined);
+    if (!parentStat?.isDirectory()) {
+      throw new AgentError("PATH_NOT_ALLOWED", "Parent directory does not exist");
+    }
+  }
+
+  await fs.writeFile(filePath, encoded, "utf8");
+  return {
+    path: options.path,
+    sizeBytes: encoded.byteLength,
+    created: !existing,
+    overwritten: Boolean(existing),
+  };
+}
+
 async function gitCommand(
   workspaceRoot: string,
   project: string,
@@ -165,14 +219,14 @@ async function gitCommand(
 async function npmCommand(
   workspaceRoot: string,
   project: string,
-  command: "npm_build" | "npm_test",
+  command: "npm_lint" | "npm_build" | "npm_test",
 ) {
   const cwd = assertProjectDirectory(workspaceRoot, project);
   const packageJsonPath = path.join(cwd, "package.json");
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8")) as {
     scripts?: Record<string, string>;
   };
-  const scriptName = command === "npm_build" ? "build" : "test";
+  const scriptName = command === "npm_build" ? "build" : command === "npm_lint" ? "lint" : "test";
   if (!packageJson.scripts?.[scriptName]) {
     throw new AgentError("SCRIPT_NOT_FOUND", `package.json does not define a ${scriptName} script`);
   }
@@ -182,4 +236,12 @@ async function npmCommand(
     command,
     timeoutMs: 300_000,
   });
+}
+
+function assertNotSecretPath(relativePath: string): void {
+  const normalized = relativePath.replaceAll("\\", "/").toLowerCase();
+  const baseName = path.posix.basename(normalized);
+  if (baseName === ".env" || (baseName.startsWith(".env.") && baseName !== ".env.example")) {
+    throw new AgentError("PATH_NOT_ALLOWED", "Writing environment secret files is not allowed");
+  }
 }

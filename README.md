@@ -107,6 +107,10 @@ npm run smoke
 
 ดูขั้นตอนแบบจับมือทำที่ [docs/USAGE.md](docs/USAGE.md)
 
+## เชื่อมกับ ChatGPT
+
+ดูขั้นตอนเชื่อม ChatGPT Developer mode / MCP ที่ [docs/CHATGPT.md](docs/CHATGPT.md)
+
 ## Phase 1 Status
 
 Phase 1 is complete when `typecheck`, `test`, `build`, `lint`, and `smoke` all pass. The first commit and any push should happen only after user approval.

@@ -5,11 +5,12 @@ import { resolveSafePath } from "./pathSafety.js";
 const allowedCommands = new Map<string, readonly string[]>([
   ["git_status", ["git", "status", "--short", "--branch"]],
   ["git_diff", ["git", "diff"]],
+  ["npm_lint", ["npm", "run", "lint"]],
   ["npm_build", ["npm", "run", "build"]],
   ["npm_test", ["npm", "test"]],
 ]);
 
-export type SafeCommandName = "git_status" | "git_diff" | "npm_build" | "npm_test";
+export type SafeCommandName = "git_status" | "git_diff" | "npm_lint" | "npm_build" | "npm_test";
 
 export type CommandResult = {
   exitCode: number;

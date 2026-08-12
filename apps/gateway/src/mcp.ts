@@ -6,6 +6,7 @@ import {
   listFilesArgsSchema,
   projectArgsSchema,
   readFileArgsSchema,
+  writeFileArgsSchema,
 } from "@personal-mcp-agent/protocol";
 import { DeviceRegistry } from "./deviceRegistry.js";
 
@@ -53,6 +54,14 @@ export function createMcpServer(registry: DeviceRegistry, requestTimeoutMs: numb
     server,
     registry,
     requestTimeoutMs,
+    "write_file",
+    deviceToolArgsSchema.merge(writeFileArgsSchema).shape,
+    "WORK mode only. Create or overwrite a UTF-8 text file inside an allowed project workspace. Cannot access outside WORKSPACE_ROOT and cannot write environment secret files.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
     "git_status",
     deviceToolArgsSchema.merge(projectArgsSchema).shape,
     "Run git status --short --branch for an allowed git project.",
@@ -64,6 +73,14 @@ export function createMcpServer(registry: DeviceRegistry, requestTimeoutMs: numb
     "git_diff",
     deviceToolArgsSchema.merge(projectArgsSchema).shape,
     "Run git diff for an allowed git project with bounded output.",
+  );
+  registerAgentTool(
+    server,
+    registry,
+    requestTimeoutMs,
+    "npm_lint",
+    deviceToolArgsSchema.merge(projectArgsSchema).shape,
+    "Run npm run lint for an allowed project. No arbitrary command input is accepted.",
   );
   registerAgentTool(
     server,

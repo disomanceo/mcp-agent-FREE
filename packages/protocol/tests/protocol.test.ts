@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentRequestSchema, listFilesArgsSchema } from "../src/index.js";
+import { agentRequestSchema, listFilesArgsSchema, writeFileArgsSchema } from "../src/index.js";
 
 describe("protocol parsing", () => {
   it("parses valid agent requests", () => {
@@ -22,5 +22,16 @@ describe("protocol parsing", () => {
 
   it("rejects excessive list_files limits", () => {
     expect(() => listFilesArgsSchema.parse({ project: "Demo", limit: 1000 })).toThrow();
+  });
+
+  it("applies write_file defaults", () => {
+    const parsed = writeFileArgsSchema.parse({
+      project: "Demo",
+      path: "src/index.ts",
+      content: "console.log('ok');\n",
+    });
+
+    expect(parsed.createDirs).toBe(false);
+    expect(parsed.overwrite).toBe(true);
   });
 });

@@ -22,4 +22,64 @@ describe("tool argument validation", () => {
       ),
     ).rejects.toThrow("Path traversal");
   });
+
+  it("writes a file in WORK mode", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    fs.mkdirSync(path.join(root, "Demo"));
+
+    const result = await executeTool(
+      "write_file",
+      {
+        project: "Demo",
+        path: "src/hello.ts",
+        content: "export const hello = 'world';\n",
+        createDirs: true,
+      },
+      {
+        deviceId: "test",
+        workspaceRoot: root,
+        permissionMode: "WORK",
+        auditLogPath: path.join(root, "audit.jsonl"),
+      },
+    );
+
+    expect(result).toMatchObject({ path: "src/hello.ts", created: true });
+    expect(fs.readFileSync(path.join(root, "Demo", "src", "hello.ts"), "utf8")).toContain("hello");
+  });
+
+  it("rejects write_file in SAFE mode", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    fs.mkdirSync(path.join(root, "Demo"));
+
+    await expect(
+      executeTool(
+        "write_file",
+        { project: "Demo", path: "hello.txt", content: "nope" },
+        {
+          deviceId: "test",
+          workspaceRoot: root,
+          permissionMode: "SAFE",
+          auditLogPath: path.join(root, "audit.jsonl"),
+        },
+      ),
+    ).rejects.toThrow("not allowed in SAFE mode");
+  });
+
+  it("rejects writing environment secret files", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "personal-mcp-agent-"));
+    fs.mkdirSync(path.join(root, "Demo"));
+
+    await expect(
+      executeTool(
+        "write_file",
+        { project: "Demo", path: ".env", content: "SECRET=value" },
+        {
+          deviceId: "test",
+          workspaceRoot: root,
+          permissionMode: "WORK",
+          auditLogPath: path.join(root, "audit.jsonl"),
+        },
+      ),
+    ).rejects.toThrow("environment secret");
+  });
 });

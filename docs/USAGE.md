@@ -8,6 +8,7 @@
 cd D:\personal-mcp-agent
 npm install
 npm run setup:local
+npm run mode:work
 npm run doctor
 ```
 
@@ -16,6 +17,8 @@ npm run doctor
 - `.env` พร้อม token แบบสุ่ม
 - `D:\AI-Workspace`
 - `D:\AI-Workspace\SampleProject`
+
+`mode:work` เปิดสิทธิ์เขียนไฟล์ผ่าน tool `write_file` ภายใต้ `D:\AI-Workspace` เท่านั้น
 
 ## 2. เปิด Gateway
 
@@ -71,6 +74,19 @@ npm run mcp:call -- npm_build "{\"project\":\"SampleProject\"}"
 npm run mcp:call -- npm_test "{\"project\":\"SampleProject\"}"
 ```
 
+ทดลองเขียนไฟล์:
+
+```powershell
+npm run mcp:call -- write_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT_AGENT_TEST.md\",\"content\":\"# Test`n`nwrite_file works.`n\"}"
+npm run mcp:call -- read_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT_AGENT_TEST.md\"}"
+```
+
+ทดลองเขียนไฟล์กับโปรเจกต์จริงแบบชั่วคราวและ cleanup อัตโนมัติ:
+
+```powershell
+npm run demo:work -- TravelTank300
+```
+
 ถ้าต้องการดู git status ให้ทำให้ sample project เป็น git repo ก่อน:
 
 ```powershell
@@ -117,3 +133,7 @@ npm run mcp:call -- list_files "{\"project\":\"your-project\"}"
 ```
 
 Agent จะปฏิเสธ path ที่ออกนอก `WORKSPACE_ROOT` เช่น `../secret`, `C:\Windows`, หรือ `\\server\share`
+
+## เชื่อมกับ ChatGPT
+
+ดูขั้นตอนที่ [docs/CHATGPT.md](CHATGPT.md)

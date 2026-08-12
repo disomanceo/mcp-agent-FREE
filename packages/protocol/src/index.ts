@@ -61,6 +61,15 @@ export const readFileArgsSchema = z.object({
   maxBytes: z.number().int().min(1).max(1_000_000).default(1_000_000),
 });
 
+export const writeFileArgsSchema = z.object({
+  project: z.string().min(1),
+  path: z.string().min(1),
+  content: z.string(),
+  createDirs: z.boolean().default(false),
+  overwrite: z.boolean().default(true),
+  maxBytes: z.number().int().min(1).max(1_000_000).default(1_000_000),
+});
+
 export const deviceToolArgsSchema = z.object({
   deviceId: z.string().min(1).optional(),
 });
