@@ -506,6 +506,25 @@ function parseLatestCommit(value) {
   return { hash, date, message: messageParts.join("|") };
 }
 
+function gitTrackingStatus(projectPath) {
+  const upstream = gitSummary(projectPath, [
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{u}",
+  ]).trim();
+  if (!upstream) return { upstream: "", ahead: 0, behind: 0 };
+  const counts = gitSummary(projectPath, ["rev-list", "--left-right", "--count", `HEAD...${upstream}`])
+    .trim()
+    .split(/\s+/)
+    .map((value) => Number.parseInt(value, 10));
+  return {
+    upstream,
+    ahead: Number.isFinite(counts[0]) ? counts[0] : 0,
+    behind: Number.isFinite(counts[1]) ? counts[1] : 0,
+  };
+}
+
 function getGitStatus(project) {
   const projectPath = requireGitProject(project);
   const branch = gitSummary(projectPath, ["branch", "--show-current"]).trim() || "(detached)";
@@ -516,7 +535,8 @@ function getGitStatus(project) {
   const porcelain = gitSummary(projectPath, ["status", "--porcelain=v1"]);
   const files = porcelain.split(/\r?\n/).map(parsePorcelainLine).filter(Boolean);
   const suggestedMessage = suggestCommitMessage(files);
-  return { project, branch, remote, latestCommit, files, suggestedMessage };
+  const tracking = gitTrackingStatus(projectPath);
+  return { project, branch, remote, latestCommit, tracking, files, suggestedMessage };
 }
 
 function gitCommitFromGui({ project, files, message }) {
@@ -1558,6 +1578,48 @@ function renderPage() {
         color: var(--green-2);
         font-weight: 700;
       }
+      .git-summary-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .git-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: var(--panel-soft);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .git-pill.latest {
+        border-color: rgba(30, 189, 114, 0.38);
+        background: rgba(30, 189, 114, 0.08);
+        color: var(--green-2);
+      }
+      .git-pill.pending {
+        border-color: rgba(245, 158, 11, 0.46);
+        background: rgba(245, 158, 11, 0.12);
+        color: #b45309;
+      }
+      [data-theme="dark"] .git-pill.pending { color: #fbbf24; }
+      button.push-ready {
+        border-color: rgba(30, 189, 114, 0.55);
+        background: var(--green);
+        color: #ffffff;
+        box-shadow: 0 12px 24px rgba(30, 189, 114, 0.22);
+        animation: pulsePush 1.25s ease-in-out infinite;
+      }
+      button.push-ready svg { stroke: currentColor; }
+      @keyframes pulsePush {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(30, 189, 114, 0.32); }
+        50% { box-shadow: 0 0 0 6px rgba(30, 189, 114, 0); }
+      }
       .doc-preview {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2068,19 +2130,50 @@ function renderPage() {
       }
 
       function renderGitStatus(data) {
-        els.gitSummary.textContent = "Branch: " + data.branch + " · Remote: " + (data.remote || "-") + " · Commit ล่าสุด: " + (data.latestCommit ? data.latestCommit.hash + " " + data.latestCommit.message : "-");
+        const files = Array.isArray(data.files) ? data.files : [];
+        const tracking = data.tracking || { upstream: "", ahead: 0, behind: 0 };
+        const latest = data.latestCommit
+          ? '<span class="git-pill latest">Commit \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14 <span>' + escapeHtml(data.latestCommit.hash) + '</span> ' + escapeHtml(data.latestCommit.message || "") + '</span>'
+          : '<span class="git-pill">Commit \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14 -</span>';
+        const upstream = tracking.upstream
+          ? '<span class="git-pill">Upstream ' + escapeHtml(tracking.upstream) + '</span>'
+          : '<span class="git-pill pending">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 upstream</span>';
+        const pushState = tracking.ahead > 0
+          ? '<span class="git-pill pending">\u0e23\u0e2d Push ' + tracking.ahead + ' commit</span>'
+          : '<span class="git-pill latest">GitHub \u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15\u0e41\u0e25\u0e49\u0e27</span>';
+        const behindState = tracking.behind > 0
+          ? '<span class="git-pill pending">\u0e2b\u0e25\u0e31\u0e07 GitHub ' + tracking.behind + ' commit</span>'
+          : "";
+        els.gitSummary.innerHTML = '<div class="git-summary-row">'
+          + '<span class="git-pill">Branch ' + escapeHtml(data.branch) + '</span>'
+          + latest
+          + upstream
+          + pushState
+          + behindState
+          + '</div>'
+          + '<div class="hint" style="margin-top:6px">Remote: ' + escapeHtml(data.remote || "-") + '</div>';
         if (!els.commitMessage.value && data.suggestedMessage) {
           els.commitMessage.value = data.suggestedMessage;
         }
-        if (!data.files.length) {
-          els.gitFiles.innerHTML = '<div class="git-output">ไม่มีไฟล์เปลี่ยนแปลง ตอนนี้ working tree clean</div>';
-          els.gitPush.disabled = false;
-          els.gitOutput.textContent = "พร้อม Push ได้ ถ้า commit ล่าสุดยังไม่ได้ส่งขึ้น GitHub";
+        els.gitPush.classList.toggle("push-ready", tracking.ahead > 0 && files.length === 0);
+        els.gitPush.textContent = tracking.ahead > 0
+          ? '\u2191 Push \u0e02\u0e36\u0e49\u0e19 GitHub (' + tracking.ahead + ')'
+          : '\u2713 Push \u0e41\u0e25\u0e49\u0e27 / \u0e44\u0e21\u0e48\u0e21\u0e35\u0e04\u0e49\u0e32\u0e07';
+        if (!files.length) {
+          els.gitFiles.innerHTML = '<div class="git-output">\u0e44\u0e21\u0e48\u0e21\u0e35\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e41\u0e1b\u0e25\u0e07 \u0e15\u0e2d\u0e19\u0e19\u0e35\u0e49 working tree clean</div>';
+          els.gitCommit.disabled = true;
+          els.gitPush.disabled = tracking.ahead === 0 || !tracking.upstream;
+          els.gitOutput.textContent = tracking.ahead > 0
+            ? "Commit \u0e40\u0e2a\u0e23\u0e47\u0e08\u0e41\u0e25\u0e49\u0e27 \u0e40\u0e2b\u0e25\u0e37\u0e2d Push \u0e02\u0e36\u0e49\u0e19 GitHub \u0e2d\u0e35\u0e01 " + tracking.ahead + " commit"
+            : "\u0e40\u0e23\u0e35\u0e22\u0e1a\u0e23\u0e49\u0e2d\u0e22\u0e41\u0e25\u0e49\u0e27: \u0e44\u0e21\u0e48\u0e21\u0e35\u0e44\u0e1f\u0e25\u0e4c\u0e04\u0e49\u0e32\u0e07 commit \u0e41\u0e25\u0e30\u0e44\u0e21\u0e48\u0e21\u0e35 commit \u0e04\u0e49\u0e32\u0e07 Push";
           return;
         }
+        els.gitCommit.disabled = false;
         els.gitPush.disabled = true;
-        els.gitOutput.textContent = "มีไฟล์ที่ยังไม่ได้ commit ให้ Commit ไฟล์ที่เลือกก่อน แล้วค่อย Push";
-        els.gitFiles.innerHTML = data.files.map((file) => {
+        els.gitPush.classList.remove("push-ready");
+        els.gitPush.textContent = '\u2191 Push \u0e02\u0e36\u0e49\u0e19 GitHub';
+        els.gitOutput.textContent = "\u0e21\u0e35\u0e44\u0e1f\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 commit \u0e43\u0e2b\u0e49\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e1f\u0e25\u0e4c \u0e41\u0e25\u0e49\u0e27\u0e01\u0e14 Commit \u0e44\u0e1f\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e01\u0e48\u0e2d\u0e19 \u0e08\u0e32\u0e01\u0e19\u0e31\u0e49\u0e19\u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e40\u0e1b\u0e34\u0e14\u0e1b\u0e38\u0e48\u0e21 Push \u0e43\u0e2b\u0e49\u0e40\u0e2d\u0e07";
+        els.gitFiles.innerHTML = files.map((file) => {
           const disabled = file.safe ? "" : "disabled";
           const note = file.safe ? "" : " · blocked: secret-looking";
           return '<label class="file-row">'
