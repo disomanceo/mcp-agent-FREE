@@ -1,0 +1,45 @@
+{
+  "name": "personal-mcp-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:gateway": "npm run build && node apps/gateway/dist/index.js",
+    "dev:agent": "npm run build && node apps/desktop-agent/dist/index.js",
+    "start:gateway": "node apps/gateway/dist/index.js",
+    "start:agent": "node apps/desktop-agent/dist/index.js",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.2.1",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.33.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "dotenv": "^17.2.1",
+    "execa": "^9.6.0",
+    "express": "^5.1.0",
+    "simple-git": "^3.28.0",
+    "ws": "^8.18.3",
+    "zod": "^4.0.17"
+  }
+}
