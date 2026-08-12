@@ -93,6 +93,12 @@ npm run smoke
 npm run demo:local
 ```
 
+ตรวจโปรเจกต์จริงด้วยชื่อโฟลเดอร์ใต้ `D:\AI-Workspace`:
+
+```powershell
+npm run demo:local -- TravelTank300 package.json
+```
+
 ## ใช้งานกับโปรเจกต์จริง
 
 วางหรือ clone โปรเจกต์จริงไว้ใต้:

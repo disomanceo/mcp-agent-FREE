@@ -9,6 +9,8 @@ dotenv.config({ quiet: true });
 
 const port = process.env.GATEWAY_PORT ?? "8787";
 const endpoint = `http://127.0.0.1:${port}/mcp`;
+const projectName = process.argv[2] ?? "SampleProject";
+const readPath = process.argv[3] ?? "README.md";
 const gateway = spawn(process.execPath, ["apps/gateway/dist/index.js"], {
   env: process.env,
   windowsHide: true,
@@ -35,13 +37,27 @@ try {
 
   for (const [name, args] of [
     ["get_projects", {}],
-    ["list_files", { project: "SampleProject" }],
-    ["read_file", { project: "SampleProject", path: "README.md" }],
-    ["npm_build", { project: "SampleProject" }],
-    ["npm_test", { project: "SampleProject" }],
+    ["list_files", { project: projectName }],
+    ["read_file", { project: projectName, path: readPath }],
+    ["git_status", { project: projectName }],
+    ["git_diff", { project: projectName }],
+    ["npm_build", { project: projectName }],
+    ["npm_test", { project: projectName }],
   ]) {
     console.log(`TOOL ${name}`);
-    console.log(JSON.stringify(await call(client, name, args), null, 2));
+    try {
+      console.log(JSON.stringify(await call(client, name, args), null, 2));
+    } catch (error) {
+      console.log(
+        JSON.stringify(
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+          null,
+          2,
+        ),
+      );
+    }
   }
 
   await transport.close();
