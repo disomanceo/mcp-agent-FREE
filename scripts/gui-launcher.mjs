@@ -1994,7 +1994,7 @@ function renderPage() {
         min-height: 142px;
         display: grid;
         grid-template-columns: 120px minmax(430px, 0.95fr) minmax(420px, 1fr);
-        align-items: center;
+        align-items: start;
         gap: 18px;
         padding: 18px 24px;
         margin-bottom: 14px;
@@ -2109,6 +2109,7 @@ function renderPage() {
         display: grid;
         grid-template-columns: 1fr 1.05fr;
         gap: 14px;
+        align-items: stretch;
       }
       .info-grid {
         display: grid;
@@ -2512,6 +2513,16 @@ function renderPage() {
         color: #ff8a92;
         font-weight: 800;
       }
+      .log-card {
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+      .log-card #logs {
+        flex: 1;
+        height: auto;
+        min-height: 420px;
+      }
       .log-line.complete {
         color: #86efac;
         font-weight: 800;
@@ -2684,7 +2695,7 @@ function renderPage() {
                   <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
                 </div>
               </section>
-              <section class="card">
+              <section class="card log-card">
                 <div class="logs-head">
                   <div class="title" style="margin:0">บันทึกการทำงาน</div>
                   <div class="row">
