@@ -12,6 +12,91 @@ function Assert-Command($Name, $InstallHint) {
   }
 }
 
+function Refresh-ProcessPath {
+  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:PATH = @($machinePath, $userPath) -join [IO.Path]::PathSeparator
+}
+
+function Find-CommandPath {
+  param(
+    [string]$Name,
+    [string[]]$Candidates = @()
+  )
+
+  $command = Get-Command $Name -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+
+  foreach ($candidate in $Candidates) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      return $candidate
+    }
+  }
+
+  return $null
+}
+
+function Install-WingetPackage {
+  param(
+    [string]$Id,
+    [string]$DisplayName
+  )
+
+  $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    throw "$DisplayName is missing and winget is unavailable. Install App Installer from Microsoft Store, then rerun setup."
+  }
+
+  winget install --id $Id -e --accept-package-agreements --accept-source-agreements
+  Refresh-ProcessPath
+}
+
+function Test-NodeVersion {
+  $node = Find-CommandPath "node" @(
+    "$env:ProgramFiles\nodejs\node.exe",
+    "${env:ProgramFiles(x86)}\nodejs\node.exe"
+  )
+  if (-not $node) {
+    return $false
+  }
+
+  $version = & $node --version
+  if ($LASTEXITCODE -ne 0 -or -not ($version -match '^v(\d+)\.')) {
+    return $false
+  }
+
+  return ([int]$Matches[1] -ge 22)
+}
+
+function Ensure-Node {
+  if (Test-NodeVersion) {
+    return
+  }
+
+  Write-Host "Node.js 22+ not found. Installing Node.js LTS..."
+  Install-WingetPackage -Id "OpenJS.NodeJS.LTS" -DisplayName "Node.js LTS"
+
+  if (-not (Test-NodeVersion)) {
+    throw "Node.js 22 or newer is still unavailable after installation."
+  }
+}
+
+function Ensure-Git {
+  $git = Find-CommandPath "git" @(
+    "$env:ProgramFiles\Git\cmd\git.exe",
+    "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
+  )
+  if ($git) {
+    return
+  }
+
+  Write-Host "Git not found. Installing Git for Windows..."
+  Install-WingetPackage -Id "Git.Git" -DisplayName "Git for Windows"
+  Assert-Command "git" "Install Git for Windows: https://git-scm.com/download/win"
+}
+
 function Find-Ngrok {
   $candidates = @(
     (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\ngrok.exe"),
@@ -94,12 +179,12 @@ function Configure-Ngrok {
 
 Write-Host "Configuring Personal MCP Agent..." -ForegroundColor Cyan
 
+Refresh-ProcessPath
+Ensure-Node
+Ensure-Git
 Assert-Command "node" "Install Node.js 22 or newer: https://nodejs.org/"
 Assert-Command "npm" "Install Node.js 22 or newer: https://nodejs.org/"
-
-if (-not (Get-Command "git" -ErrorAction SilentlyContinue)) {
-  Write-Warning "Git was not found. The app can start, but real project clone/commit/push workflows need Git for Windows."
-}
+Assert-Command "git" "Install Git for Windows: https://git-scm.com/download/win"
 
 if (-not (Test-Path -LiteralPath $WorkspaceRoot)) {
   New-Item -ItemType Directory -Force -Path $WorkspaceRoot | Out-Null

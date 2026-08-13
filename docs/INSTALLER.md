@@ -13,13 +13,18 @@ irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/insta
 The installer will:
 
 - clone or update `D:\personal-mcp-agent`
+- install Node.js LTS automatically when Node.js 22+ is missing
+- install Git for Windows automatically when Git is missing
 - install npm dependencies
 - create `.env`
 - create `D:\AI-Workspace`
 - set `PERMISSION_MODE=WORK`
 - check/install ngrok when possible
+- update ngrok automatically after install/check
 - configure ngrok automatically when `NGROK_AUTHTOKEN` is set
 - create a Desktop shortcut named `Personal MCP Agent`
+
+The automatic prerequisite installation uses `winget`. On Windows machines without `winget`, install Microsoft App Installer first, then rerun the setup.
 
 ngrok requires an account token before it can create a public URL. Get your token from:
 
