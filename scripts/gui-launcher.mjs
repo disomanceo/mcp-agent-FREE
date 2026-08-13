@@ -2698,13 +2698,50 @@ function renderPage() {
       document.documentElement.dataset.theme = savedTheme;
       let latestDevUrl = "";
 
+      function reportClientError(error) {
+        const message = error?.message || String(error || "Unknown client error");
+        console.error(error);
+        const line = new Date().toLocaleTimeString() + "  ERROR  [ui] " + message;
+        [els.logs, els.logsFull, els.gitOutput].filter(Boolean).forEach((target) => {
+          target.textContent = line + "\\n" + (target.textContent || "");
+        });
+        if (els.status) {
+          els.status.textContent = "มีข้อผิดพลาด";
+          els.status.className = "status-pill status-error";
+        }
+      }
+
+      function bind(element, event, handler) {
+        if (!element) return;
+        element.addEventListener(event, async (...args) => {
+          try {
+            await handler(...args);
+          } catch (error) {
+            reportClientError(error);
+          }
+        });
+      }
+
+      function bindAll(elements, event, handler) {
+        Array.from(elements || []).forEach((element) => bind(element, event, handler));
+      }
+
+      window.addEventListener("error", (event) => {
+        reportClientError(event.error || event.message);
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        reportClientError(event.reason);
+      });
+
+      bindAll(els.navItems, "click", (event) => {
+        const view = event.currentTarget?.dataset?.view;
+        if (view) showView(view);
+      });
+
       els.start.addEventListener("click", () => post("/api/start"));
       els.stop.addEventListener("click", () => post("/api/stop"));
       els.refresh.addEventListener("click", refreshAll);
       els.settingsTop.addEventListener("click", () => showView("settings"));
-      els.navItems.forEach((item) => {
-        item.addEventListener("click", () => showView(item.dataset.view));
-      });
       els.themeToggle.addEventListener("click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = next;
