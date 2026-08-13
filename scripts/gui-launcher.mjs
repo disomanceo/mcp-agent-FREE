@@ -201,6 +201,18 @@ app.post("/api/git/push", (req, res) => {
   }
 });
 
+app.post("/api/git/upstream", (req, res) => {
+  try {
+    const result = gitSetUpstreamFromGui({
+      project: String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""),
+      remoteUrl: String(req.body?.remoteUrl ?? ""),
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/deploy/vercel", (req, res) => {
   try {
     const result = deployVercelFromGui(
@@ -948,6 +960,50 @@ function gitPushFromGui(project) {
   log("git", `Pushed ${project} to ${upstream}`);
   markProjectEvent(project, "github", `Pushed to ${upstream}`);
   return { ok: true, upstream, output: `${push.stdout}\n${push.stderr}`.trim() };
+}
+
+function gitSetUpstreamFromGui({ project, remoteUrl }) {
+  const projectPath = requireGitProject(project);
+  const cleanedUrl = normalizeGitHubRemoteUrl(remoteUrl);
+  const branch = "main";
+  const existingRemote = gitSummary(projectPath, ["remote", "get-url", "origin"]).trim();
+  const remoteCommand = existingRemote ? ["remote", "set-url", "origin", cleanedUrl] : ["remote", "add", "origin", cleanedUrl];
+  runGit(projectPath, remoteCommand, existingRemote ? "git remote set-url origin failed" : "git remote add origin failed");
+  runGit(projectPath, ["branch", "-M", branch], "git branch -M main failed");
+  const dirty = gitSummary(projectPath, ["status", "--porcelain=v1"]).trim();
+  if (dirty) {
+    throw new Error("ยังมีไฟล์ที่ยังไม่ได้ commit ให้ commit ให้เรียบร้อยก่อนตั้ง upstream/push");
+  }
+  const push = runGit(projectPath, ["push", "-u", "origin", branch], "git push -u origin main failed", 120_000);
+  log("git", `Set upstream for ${project}: origin/${branch}`);
+  markProjectEvent(project, "github", `Upstream origin/${branch}`);
+  return { ok: true, upstream: `origin/${branch}`, remoteUrl: cleanedUrl, output: push };
+}
+
+function normalizeGitHubRemoteUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!url) throw new Error("ใส่ GitHub repository URL ก่อน");
+  if (/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(?:\.git)?$/i.test(url)) {
+    return url.endsWith(".git") ? url : `${url}.git`;
+  }
+  if (/^git@github\.com:[\w.-]+\/[\w.-]+(?:\.git)?$/i.test(url)) {
+    return url.endsWith(".git") ? url : `${url}.git`;
+  }
+  throw new Error("URL ต้องเป็น GitHub repo เช่น https://github.com/username/repo.git");
+}
+
+function runGit(cwd, args, errorMessage, timeout = 60_000) {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout,
+  });
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+  if (result.status !== 0) {
+    throw new Error(output || errorMessage);
+  }
+  return output;
 }
 
 function deployVercelFromGui(project) {
@@ -2473,6 +2529,14 @@ function renderPage() {
               <button id="gitSelectAll">${icon("check")} เลือกทั้งหมดที่ปลอดภัย</button>
             </div>
             <div id="gitSummary" class="hint" style="margin-top:10px"></div>
+            <div id="upstreamPanel" class="git-output" style="display:none; margin-top:10px">
+              <div class="title" style="margin:0 0 8px">ตั้ง Upstream ไป GitHub</div>
+              <div class="row">
+                <input id="upstreamUrl" placeholder="https://github.com/username/repository.git" />
+                <button id="setUpstream">${icon("upload")} ตั้ง Upstream และ Push ครั้งแรก</button>
+              </div>
+              <p class="hint" style="margin:8px 0 0">สร้าง repo บน GitHub ให้เรียบร้อยก่อน แล้ววาง URL ที่นี่ ระบบจะตั้ง origin, เปลี่ยน branch เป็น main และ push -u ให้</p>
+            </div>
             <div id="gitFiles" class="file-list"></div>
             <div class="column">
               <div class="row">
@@ -2557,6 +2621,9 @@ function renderPage() {
         gitProject: document.querySelector("#gitProject"),
         gitRefresh: document.querySelector("#gitRefresh"),
         gitSelectAll: document.querySelector("#gitSelectAll"),
+        upstreamPanel: document.querySelector("#upstreamPanel"),
+        upstreamUrl: document.querySelector("#upstreamUrl"),
+        setUpstream: document.querySelector("#setUpstream"),
         gitFiles: document.querySelector("#gitFiles"),
         gitSummary: document.querySelector("#gitSummary"),
         gitDevTest: document.querySelector("#gitDevTest"),
@@ -2642,6 +2709,28 @@ function renderPage() {
         document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
           item.checked = true;
         });
+      });
+      els.setUpstream.addEventListener("click", async () => {
+        if (!els.upstreamUrl.value.trim()) {
+          els.gitOutput.textContent = "ใส่ GitHub repository URL ก่อน เช่น https://github.com/username/repo.git";
+          return;
+        }
+        if (!confirm("ตั้ง origin และ push ครั้งแรกขึ้น GitHub ใช่ไหม? ตรวจให้แน่ใจว่าสร้าง repo บน GitHub แล้ว")) return;
+        els.setUpstream.disabled = true;
+        els.gitOutput.textContent = "กำลังตั้ง upstream และ push ครั้งแรก...";
+        try {
+          const response = await post("/api/git/upstream", {
+            project: els.gitProject.value,
+            remoteUrl: els.upstreamUrl.value,
+          });
+          els.gitOutput.textContent = "ตั้ง upstream สำเร็จ: " + response.upstream;
+          await refreshGitStatus();
+          await refreshAll();
+        } catch (error) {
+          els.gitOutput.textContent = error.message;
+        } finally {
+          els.setUpstream.disabled = false;
+        }
       });
       els.gitDevTest.addEventListener("click", async () => {
         els.gitDevTest.disabled = true;
@@ -2794,6 +2883,10 @@ function renderPage() {
           + behindState
           + '</div>'
           + '<div class="hint" style="margin-top:6px">Remote: ' + escapeHtml(data.remote || "-") + '</div>';
+        els.upstreamPanel.style.display = tracking.upstream ? "none" : "block";
+        if (!els.upstreamUrl.value && data.remote) {
+          els.upstreamUrl.value = data.remote;
+        }
         if (!els.commitMessage.value && data.suggestedMessage) {
           els.commitMessage.value = data.suggestedMessage;
         }
