@@ -452,7 +452,8 @@ function cleanupOrphanProcesses() {
 $root = '${root}'
 $current = ${process.pid}
 $gatewayPort = '${gatewayPort}'
-$ports = @([int]$gatewayPort, 4040)
+$guiPort = '${guiPort}'
+$ports = @([int]$guiPort, [int]$gatewayPort, 4040)
 $owners = @()
 foreach ($port in $ports) {
   $owners += Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
