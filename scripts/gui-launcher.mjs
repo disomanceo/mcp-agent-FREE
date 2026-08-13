@@ -1692,6 +1692,12 @@ function renderPage() {
         font-size: 12px;
         margin-top: 2px;
       }
+      .brand-meta {
+        color: var(--sidebar-muted);
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 8px;
+      }
       .nav {
         display: grid;
         gap: 10px;
@@ -1726,14 +1732,14 @@ function renderPage() {
       .device-card span { color: #4ade80; font-size: 14px; }
       .content {
         min-width: 0;
-        padding: 24px 28px;
+        padding: 18px 28px;
       }
       .topbar {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: 18px;
-        margin-bottom: 20px;
+        margin-bottom: 14px;
       }
       h1 {
         margin: 0;
@@ -1762,20 +1768,20 @@ function renderPage() {
       }
       .card { padding: 18px; }
       .hero-card {
-        min-height: 174px;
+        min-height: 142px;
         display: grid;
-        grid-template-columns: 178px minmax(0, 1fr);
+        grid-template-columns: 142px minmax(280px, 0.72fr) minmax(360px, 1fr);
         align-items: center;
-        gap: 24px;
-        padding: 26px 28px;
+        gap: 22px;
+        padding: 18px 24px;
         margin-bottom: 14px;
       }
       .agent-orb {
-        width: 132px;
-        height: 132px;
+        width: 112px;
+        height: 112px;
         display: grid;
         place-items: center;
-        border: 9px solid rgba(30, 189, 114, 0.3);
+        border: 8px solid rgba(30, 189, 114, 0.3);
         border-top-color: var(--green);
         border-right-color: var(--green);
         border-radius: 50%;
@@ -1794,14 +1800,32 @@ function renderPage() {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 0 0 10px;
-        font-size: 26px;
+        margin: 0 0 8px;
+        font-size: 25px;
         font-weight: 800;
       }
       .hero-subtitle {
-        margin-bottom: 18px;
+        margin-bottom: 14px;
         color: var(--muted);
         font-size: 15px;
+      }
+      .hero-url-panel {
+        min-width: 0;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+      .hero-url-panel .title {
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+      .hero-url-panel .hint {
+        margin: 8px 0 0;
+      }
+      .hero-url-panel .url {
+        min-width: 0;
+        background: var(--panel);
       }
       .stack { display: grid; gap: 14px; }
       .view { display: none; }
@@ -2188,6 +2212,11 @@ function renderPage() {
           <div>
             <div class="brand-title">Personal MCP Agent</div>
             <div class="brand-version">Version ${appVersion}</div>
+            <div class="brand-meta">
+              \u0e1e\u0e31\u0e12\u0e19\u0e32\u0e42\u0e14\u0e22 \u0e1c\u0e2d.\u0e2a\u0e38\u0e18\u0e19 \u0e1e\u0e38\u0e17\u0e18\u0e23\u0e31\u0e15\u0e19\u0e4c<br />
+              \u0e1c\u0e39\u0e49\u0e2d\u0e33\u0e19\u0e27\u0e22\u0e01\u0e32\u0e23\u0e42\u0e23\u0e07\u0e40\u0e23\u0e35\u0e22\u0e19\u0e27\u0e31\u0e14\u0e44\u0e1c\u0e48\u0e21\u0e38\u0e49\u0e07<br />
+              086-6271047
+            </div>
           </div>
         </div>
         <nav class="nav">
@@ -2228,18 +2257,17 @@ function renderPage() {
                 <button id="refresh">${icon("refresh")} รีเฟรช</button>
               </div>
             </div>
+            <div class="hero-url-panel">
+              <div class="title">MCP URL \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a ChatGPT</div>
+              <div class="row">
+                <div id="url" class="url">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 URL \u0e43\u0e2b\u0e49\u0e01\u0e14 Start \u0e01\u0e48\u0e2d\u0e19</div>
+                <button id="copy">${icon("copy")} <span id="copyText">\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01</span></button>
+              </div>
+              <p class="hint">Cloudflare \u0e40\u0e1b\u0e47\u0e19\u0e04\u0e48\u0e32\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e32\u0e19 \u0e16\u0e49\u0e32\u0e40\u0e1b\u0e34\u0e14\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e08\u0e30\u0e2a\u0e33\u0e23\u0e2d\u0e07\u0e14\u0e49\u0e27\u0e22 ngrok</p>
+            </div>
           </section>
 
           <div class="stack">
-            <section class="card">
-              <div class="title">MCP URL สำหรับ ChatGPT</div>
-              <div class="row">
-                <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
-                <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
-              </div>
-              <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
-            </section>
-
             <div class="grid">
               <section class="card">
                 <div class="title">โปรเจกต์ที่ใช้งาน</div>
