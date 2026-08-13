@@ -652,8 +652,58 @@ function projectDetails(workspaceRoot, name) {
     remote: remote.trim(),
     sourceUrl: metadata?.displayUrl ?? metadata?.sourceUrl ?? remote.trim(),
     docs,
+    health: projectHealth(projectPath, { isGit, gitStatus, remote, docs, packageJson }),
+    recentFiles: recentChangedFiles(projectPath),
     events: recentProjectEvents(name),
   };
+}
+
+function projectHealth(projectPath, { isGit, gitStatus, remote, docs, packageJson }) {
+  const checks = [
+    { key: "folder", label: "โฟลเดอร์พร้อม", ok: fs.existsSync(projectPath) },
+    { key: "git", label: "รู้จัก Git", ok: isGit },
+    { key: "readme", label: "มี README", ok: Boolean(docs.readme) },
+    { key: "todo", label: "มี TODO", ok: Boolean(docs.todo) },
+    { key: "package", label: "มี package.json", ok: Boolean(packageJson) },
+    { key: "remote", label: "เชื่อม GitHub/remote", ok: Boolean(remote.trim()) },
+  ];
+  const changedCount = isGit
+    ? gitStatus.split(/\r?\n/).filter((line) => line.trim()).length
+    : 0;
+  const warnings = [];
+  if (!isGit) warnings.push("ยังไม่ใช่ Git repo ให้กดเริ่ม Git ก่อน commit");
+  if (isGit && changedCount > 0) warnings.push(`มีไฟล์เปลี่ยนแปลง ${changedCount} ไฟล์ ควรตรวจสอบก่อน commit`);
+  if (isGit && !remote.trim()) warnings.push("ยังไม่มี remote ถ้าจะสำรองออนไลน์ให้เชื่อม GitHub");
+  if (!docs.readme) warnings.push("ยังไม่มี README อธิบายว่าโปรเจกต์นี้ทำอะไร");
+  if (!docs.todo) warnings.push("ยังไม่มี TODO สำหรับจดงานค้าง/แผนถัดไป");
+  const score = checks.filter((check) => check.ok).length;
+  return {
+    checks,
+    changedCount,
+    status: warnings.length === 0 ? "ready" : isGit ? "review" : "setup",
+    summary:
+      warnings.length === 0
+        ? "พร้อมใช้งานและติดตามด้วย Git แล้ว"
+        : warnings.slice(0, 2).join(" · "),
+  };
+}
+
+function recentChangedFiles(projectPath) {
+  try {
+    return fs
+      .readdirSync(projectPath, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => {
+        const filePath = path.join(projectPath, entry.name);
+        const stat = fs.statSync(filePath);
+        return { name: entry.name, mtimeMs: stat.mtimeMs, updatedAt: stat.mtime.toISOString() };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(0, 5)
+      .map(({ name, updatedAt }) => ({ name, updatedAt }));
+  } catch {
+    return [];
+  }
 }
 
 function readJson(filePath) {
@@ -1994,6 +2044,67 @@ function renderPage() {
         color: var(--green-2);
         background: rgba(30, 189, 114, 0.08);
       }
+      .badge.health-ready {
+        border-color: rgba(30, 189, 114, 0.42);
+        color: var(--green-2);
+        background: rgba(30, 189, 114, 0.08);
+      }
+      .badge.health-review {
+        border-color: rgba(245, 158, 11, 0.48);
+        color: #b45309;
+        background: rgba(245, 158, 11, 0.12);
+      }
+      .badge.health-setup {
+        border-color: rgba(233, 75, 85, 0.45);
+        color: var(--red);
+        background: rgba(233, 75, 85, 0.08);
+      }
+      [data-theme="dark"] .badge.health-review { color: #fbbf24; }
+      .project-health {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .health-checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .health-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 0 9px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .health-check.ok {
+        color: var(--green-2);
+        border-color: rgba(30, 189, 114, 0.32);
+        background: rgba(30, 189, 114, 0.07);
+      }
+      .health-check.missing {
+        color: #b45309;
+        border-color: rgba(245, 158, 11, 0.36);
+        background: rgba(245, 158, 11, 0.1);
+      }
+      [data-theme="dark"] .health-check.missing { color: #fbbf24; }
+      .recent-files {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .recent-files strong {
+        color: var(--ink);
+        margin-right: 6px;
+      }
+      .recent-file {
+        font-family: Consolas, "Courier New", monospace;
+      }
       .event-badges {
         display: flex;
         flex-wrap: wrap;
@@ -2796,6 +2907,19 @@ function renderPage() {
           const events = (project.events || []).map((event) =>
             '<span class="badge event-badge">' + escapeHtml(event.label) + '</span>'
           ).join("");
+          const healthClass = project.health?.status === "ready" ? "health-ready" : project.health?.status === "setup" ? "health-setup" : "health-review";
+          const healthLabel = project.health?.status === "ready" ? "ตรวจแล้วพร้อม" : project.health?.status === "setup" ? "ต้องเริ่ม Git" : "ควรตรวจสอบ";
+          const checks = (project.health?.checks || []).map((check) =>
+            '<span class="health-check ' + (check.ok ? "ok" : "missing") + '">' + (check.ok ? "✓" : "!") + " " + escapeHtml(check.label) + '</span>'
+          ).join("");
+          const recentFiles = (project.recentFiles || []).map((file) =>
+            '<span class="recent-file">' + escapeHtml(file.name) + '</span>'
+          ).join(", ");
+          const health = '<div class="project-health">'
+            + '<div class="health-checks">' + checks + '</div>'
+            + '<div class="hint">' + escapeHtml(project.health?.summary || "-") + '</div>'
+            + '<div class="recent-files"><strong>ไฟล์แก้ล่าสุด</strong>' + (recentFiles || "-") + '</div>'
+            + '</div>';
           const readme = project.docs?.readme
             ? '<div class="doc-snippet"><strong>' + escapeHtml(project.docs.readme.file) + '</strong>' + escapeHtml(project.docs.readme.text || "-") + '</div>'
             : '<div class="doc-snippet"><strong>README</strong>ยังไม่มีไฟล์ README.md</div>';
@@ -2807,9 +2931,11 @@ function renderPage() {
             + '<div class="project-name">' + escapeHtml(project.name)
             + ' <span class="badge">' + escapeHtml(project.kind) + '</span>'
             + (project.active ? ' <span class="badge active-badge">active</span>' : '')
+            + ' <span class="badge ' + healthClass + '">' + healthLabel + '</span>'
             + '</div>'
             + '<div class="hint">' + escapeHtml(project.description) + '</div>'
             + (events ? '<div class="event-badges">' + events + '</div>' : '')
+            + health
             + '<div class="doc-preview">' + readme + todo + '</div>'
             + '<div class="project-meta">'
             + '<div><strong>ล่าสุด commit</strong>' + commit + '</div>'
