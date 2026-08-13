@@ -7,7 +7,7 @@ echo Personal MCP Agent installer
 echo ============================
 echo.
 echo This installer downloads and runs the official install.ps1 script from GitHub.
-echo It will install/check Node.js, Git, cloudflared, ngrok, npm dependencies,
+echo It will install/check Node.js, Git, ngrok, npm dependencies,
 echo local config, and the Desktop shortcut.
 echo.
 

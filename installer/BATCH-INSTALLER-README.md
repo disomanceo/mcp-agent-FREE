@@ -16,7 +16,7 @@ Or right-click it and choose:
 Run as administrator
 ```
 
-The script downloads and runs the official `install.ps1` from GitHub. It installs/checks Node.js, Git, cloudflared, ngrok, npm dependencies, local config, WORK mode, and the Desktop shortcut.
+The script downloads and runs the official `install.ps1` from GitHub. It installs/checks Node.js, Git, ngrok, npm dependencies, local config, WORK mode, and the Desktop shortcut.
 
 ## Notes
 

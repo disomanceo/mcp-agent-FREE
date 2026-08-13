@@ -12,10 +12,8 @@ const app = express();
 const guiPort = Number(process.env.GUI_PORT ?? 8790);
 const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
-let tunnelProvider = (process.env.TUNNEL_PROVIDER ?? "ngrok").toLowerCase();
-let tunnelFallback = (process.env.TUNNEL_FALLBACK ?? "cloudflare").toLowerCase();
-let cloudflareTunnelMode = (process.env.CLOUDFLARE_TUNNEL_MODE ?? "quick").toLowerCase();
-if (tunnelFallback === "none") tunnelFallback = "";
+const tunnelProvider = "ngrok";
+const tunnelFallback = "";
 const children = [];
 const devServers = new Map();
 const logs = [];
@@ -47,10 +45,8 @@ app.get("/api/status", async (_req, res) => {
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
     tunnelProvider,
     tunnelFallback,
-    cloudflareTunnelMode,
     ngrokConfigured: hasNgrokConfig(),
     ngrokDomain: process.env.NGROK_DOMAIN ?? "",
-    cloudflarePublicUrl: process.env.CLOUDFLARE_PUBLIC_URL ?? "",
     version: appVersion,
     logs: combinedLogs(),
   });
@@ -212,9 +208,6 @@ app.post("/api/tunnel/config", (req, res) => {
       fallback: String(req.body?.fallback ?? ""),
       ngrokAuthtoken: String(req.body?.ngrokAuthtoken ?? ""),
       ngrokDomain: String(req.body?.ngrokDomain ?? ""),
-      cloudflareMode: String(req.body?.cloudflareMode ?? ""),
-      cloudflarePublicUrl: String(req.body?.cloudflarePublicUrl ?? ""),
-      cloudflareToken: String(req.body?.cloudflareToken ?? ""),
     });
     res.json(result);
   } catch (error) {
@@ -333,65 +326,7 @@ async function startAll() {
 }
 
 async function startTunnel() {
-  const providers = tunnelProvider === "ngrok" ? ["ngrok"] : ["cloudflare"];
-  if (tunnelFallback && !providers.includes(tunnelFallback)) {
-    providers.push(tunnelFallback);
-  }
-
-  const errors = [];
-  for (const provider of providers) {
-    try {
-      if (provider === "cloudflare") {
-        return await startCloudflareTunnel();
-      }
-      if (provider === "ngrok") {
-        return await startNgrokTunnel();
-      }
-      errors.push(`${provider}: unsupported tunnel provider`);
-    } catch (error) {
-      const message = messageOf(error);
-      errors.push(`${provider}: ${message}`);
-      log("launcher", `${provider} tunnel failed: ${message}`);
-    }
-  }
-
-  throw new Error(`No tunnel provider could start. ${errors.join(" | ")}`);
-}
-
-async function startCloudflareTunnel() {
-  const cloudflaredPath = findCloudflared();
-  if (!cloudflaredPath) {
-    throw new Error("cloudflared.exe not found. Install cloudflared first, then retry.");
-  }
-
-  const configuredUrl = (process.env.CLOUDFLARE_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
-  if (cloudflareTunnelMode === "named") {
-    const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN ?? "").trim();
-    if (!token) {
-      throw new Error("CLOUDFLARE_TUNNEL_TOKEN is missing for named Cloudflare tunnel.");
-    }
-    startChild("cloudflare", cloudflaredPath, ["tunnel", "run", "--token", token]);
-    if (!configuredUrl) {
-      throw new Error("CLOUDFLARE_PUBLIC_URL is required for named Cloudflare tunnel mode.");
-    }
-    await delay(1200);
-    return configuredUrl;
-  }
-
-  const cloudflare = startChild("cloudflare", cloudflaredPath, [
-    "tunnel",
-    "--url",
-    `http://127.0.0.1:${gatewayPort}`,
-  ]);
-  try {
-    return await waitForCloudflareUrl(cloudflare, () =>
-      childExitError(cloudflare, "Cloudflare tunnel"),
-    );
-  } catch (error) {
-    killProcessTree(cloudflare.pid);
-    removeChild(cloudflare);
-    throw error;
-  }
+  return startNgrokTunnel();
 }
 
 async function startNgrokTunnel() {
@@ -483,13 +418,6 @@ function cleanup() {
   cleanupOrphanProcesses();
 }
 
-function removeChild(child) {
-  const index = children.indexOf(child);
-  if (index >= 0) {
-    children.splice(index, 1);
-  }
-}
-
 function killProcessTree(pid) {
   if (!pid) return;
   if (process.platform === "win32") {
@@ -551,19 +479,6 @@ async function waitForNgrokUrl(exitError) {
   throw new Error("ngrok did not expose a public HTTPS URL.");
 }
 
-async function waitForCloudflareUrl(child, exitError) {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
-    const match = child.outputBuffer?.match(/https:\/\/[a-zA-Z0-9.-]+\.trycloudflare\.com/i);
-    if (match?.[0]) {
-      return match[0].replace(/\/$/, "");
-    }
-    const failure = exitError?.();
-    if (failure) throw failure;
-    await delay(500);
-  }
-  throw new Error("Cloudflare did not expose a public HTTPS URL.");
-}
-
 async function waitUntil(check, errorMessage, exitError) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const failure = exitError?.();
@@ -608,12 +523,7 @@ Get-CimInstance Win32_Process | Where-Object {
   )
   $isPersonalRoot = $cmd -like "*$root*" -and $isPersonalNode
   $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$gatewayPort*"
-  $isCloudflared = $cmd -like "*cloudflared*" -and $cmd -like "*tunnel*" -and (
-    $cmd -like "*127.0.0.1:$gatewayPort*" -or
-    $cmd -like "*localhost:$gatewayPort*" -or
-    $cmd -like "*--token*"
-  )
-  return $ownsAppPort -or $isPersonalRoot -or $isNgrok -or $isCloudflared
+  return $ownsAppPort -or $isPersonalRoot -or $isNgrok
 } | ForEach-Object {
   taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
@@ -715,7 +625,6 @@ function projectHealth(projectPath, { isGit, gitStatus, remote, docs, packageJso
   if (isGit && !remote.trim()) warnings.push("ยังไม่มี remote ถ้าจะสำรองออนไลน์ให้เชื่อม GitHub");
   if (!docs.readme) warnings.push("ยังไม่มี README อธิบายว่าโปรเจกต์นี้ทำอะไร");
   if (!docs.todo) warnings.push("ยังไม่มี TODO สำหรับจดงานค้าง/แผนถัดไป");
-  const score = checks.filter((check) => check.ok).length;
   return {
     checks,
     changedCount,
@@ -1323,67 +1232,33 @@ function addProjectFromLocal(rawPath) {
   return { ok: true, project: project.name, kind: "local", copied, path: targetPath };
 }
 
-function saveTunnelConfig({
-  provider,
-  fallback,
-  ngrokAuthtoken,
-  ngrokDomain,
-  cloudflareMode,
-  cloudflarePublicUrl,
-  cloudflareToken,
-}) {
-  const nextProvider = normalizeOption(provider, ["cloudflare", "ngrok"], "cloudflare");
-  const nextFallback = normalizeOption(fallback, ["ngrok", "cloudflare", "none"], "ngrok");
-  const nextCloudflareMode = normalizeOption(cloudflareMode, ["quick", "named"], "quick");
+function saveTunnelConfig({ ngrokAuthtoken, ngrokDomain }) {
   const cleanedNgrokDomain = ngrokDomain.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
-  const cleanedCloudflareUrl = cloudflarePublicUrl.trim().replace(/\/$/, "");
 
   if (cleanedNgrokDomain && !/^[a-z0-9.-]+$/i.test(cleanedNgrokDomain)) {
-    throw new Error("ngrok domain ต้องเป็น hostname เช่น abc123.ngrok-free.dev");
-  }
-  if (cleanedCloudflareUrl && !/^https:\/\/[a-z0-9.-]+(?:\/.*)?$/i.test(cleanedCloudflareUrl)) {
-    throw new Error("Cloudflare public URL ต้องขึ้นต้นด้วย https://");
+    throw new Error("ngrok domain ???????? hostname ???? abc123.ngrok-free.dev");
   }
 
   const updates = {
-    TUNNEL_PROVIDER: nextProvider,
-    TUNNEL_FALLBACK: nextFallback,
+    TUNNEL_PROVIDER: "ngrok",
+    TUNNEL_FALLBACK: "none",
     NGROK_DOMAIN: cleanedNgrokDomain,
-    CLOUDFLARE_TUNNEL_MODE: nextCloudflareMode,
-    CLOUDFLARE_PUBLIC_URL: cleanedCloudflareUrl,
   };
   if (ngrokAuthtoken.trim()) updates.NGROK_AUTHTOKEN = ngrokAuthtoken.trim();
-  if (cloudflareToken.trim()) updates.CLOUDFLARE_TUNNEL_TOKEN = cloudflareToken.trim();
 
   for (const [key, value] of Object.entries(updates)) {
     upsertEnvValue(key, value);
     process.env[key] = value;
   }
 
-  tunnelProvider = nextProvider;
-  tunnelFallback = nextFallback === "none" ? "" : nextFallback;
-  cloudflareTunnelMode = nextCloudflareMode;
-
   if (ngrokAuthtoken.trim()) {
     configureNgrokAuthtoken(ngrokAuthtoken.trim());
   }
 
-  log("launcher", `Tunnel config saved: provider=${tunnelProvider}, fallback=${tunnelFallback || "none"}`);
-  return {
-    ok: true,
-    tunnelProvider,
-    tunnelFallback,
-    cloudflareTunnelMode,
-    ngrokConfigured: hasNgrokConfig(),
-    ngrokDomain: process.env.NGROK_DOMAIN ?? "",
-    cloudflarePublicUrl: process.env.CLOUDFLARE_PUBLIC_URL ?? "",
-  };
+  log("launcher", "Tunnel config saved: provider=ngrok, fallback=none");
+  return { ok: true, tunnelProvider, tunnelFallback, ngrokConfigured: hasNgrokConfig(), ngrokDomain: process.env.NGROK_DOMAIN ?? "" };
 }
 
-function normalizeOption(value, allowed, fallback) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return allowed.includes(normalized) ? normalized : fallback;
-}
 
 function configureNgrokAuthtoken(token) {
   const ngrokPath = findNgrok();
@@ -1662,24 +1537,6 @@ function findNgrok() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
-function findCloudflared() {
-  const candidates = [
-    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "cloudflared.exe"),
-    path.join(os.homedir(), "AppData", "Local", "Programs", "cloudflared", "cloudflared.exe"),
-    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages", "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe", "cloudflared.exe"),
-    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages", "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe", "cloudflared-windows-amd64.exe"),
-    path.join(process.env.ProgramFiles ?? "", "cloudflared", "cloudflared.exe"),
-    path.join(process.env.ProgramFiles ?? "", "Cloudflare", "cloudflared.exe"),
-    path.join(process.env["ProgramFiles(x86)"] ?? "", "cloudflared", "cloudflared.exe"),
-    path.join(process.env["ProgramFiles(x86)"] ?? "", "Cloudflare", "cloudflared.exe"),
-  ];
-
-  for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
-    candidates.push(path.join(entry, "cloudflared.exe"));
-  }
-
-  return candidates.find((candidate) => fs.existsSync(candidate));
-}
 
 function openBrowser(url) {
   if (process.platform === "win32") {
@@ -2615,54 +2472,20 @@ function renderPage() {
                 <div id="url" class="url">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 URL \u0e43\u0e2b\u0e49\u0e01\u0e14 Start \u0e01\u0e48\u0e2d\u0e19</div>
                 <button id="copy">${icon("copy")} <span id="copyText">\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01</span></button>
               </div>
-              <p class="hint">ngrok \u0e40\u0e1b\u0e47\u0e19 Tunnel \u0e2b\u0e25\u0e31\u0e01 \u0e16\u0e49\u0e32\u0e40\u0e1b\u0e34\u0e14\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e08\u0e30\u0e2a\u0e33\u0e23\u0e2d\u0e07\u0e14\u0e49\u0e27\u0e22 Cloudflare</p>
+              <p class="hint">ngrok ???? Tunnel ??????????????????? ??? URL ???????????? ChatGPT</p>
               <div class="tunnel-settings">
                 <div class="row">
                   <div class="field">
-                    <label for="tunnelProviderInput">Tunnel หลัก</label>
-                    <select id="tunnelProviderInput">
-                      <option value="cloudflare">Cloudflare</option>
-                      <option value="ngrok">ngrok</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="tunnelFallbackInput">ตัวสำรอง</label>
-                    <select id="tunnelFallbackInput">
-                      <option value="ngrok">ngrok</option>
-                      <option value="cloudflare">Cloudflare</option>
-                      <option value="none">ไม่มี</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="field">
                     <label for="ngrokAuthtoken">ngrok authtoken</label>
-                    <input id="ngrokAuthtoken" type="password" placeholder="วาง token จาก ngrok dashboard" autocomplete="off" />
+                    <input id="ngrokAuthtoken" type="password" placeholder="??? token ??? ngrok dashboard" autocomplete="off" />
                   </div>
                   <div class="field">
                     <label for="ngrokDomain">ngrok static/dev domain</label>
-                    <input id="ngrokDomain" placeholder="เช่น abc123.ngrok-free.dev" />
+                    <input id="ngrokDomain" placeholder="???? abc123.ngrok-free.dev" />
                   </div>
                 </div>
                 <div class="row">
-                  <div class="field">
-                    <label for="cloudflareModeInput">Cloudflare mode</label>
-                    <select id="cloudflareModeInput">
-                      <option value="quick">Quick URL เปลี่ยนได้</option>
-                      <option value="named">Named URL ถาวร</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="cloudflarePublicUrl">Cloudflare public URL</label>
-                    <input id="cloudflarePublicUrl" placeholder="https://mcp.yourdomain.com" />
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="field">
-                    <label for="cloudflareToken">Cloudflare tunnel token</label>
-                    <input id="cloudflareToken" type="password" placeholder="ใช้เฉพาะ Named Tunnel" autocomplete="off" />
-                  </div>
-                  <button id="saveTunnelConfig">${icon("save")} บันทึก Tunnel</button>
+                  <button id="saveTunnelConfig">${icon("save")} ?????? ngrok</button>
                 </div>
                 <div id="tunnelConfigStatus" class="secret-status"></div>
               </div>
@@ -2803,7 +2626,6 @@ function renderPage() {
               <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="settingsProject"></span></div>
               <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Permission Mode</strong><span id="settingsMode"></span></div>
               <div class="info-card"><div class="info-icon">${icon("rocket")}</div><strong>Tunnel Provider</strong><span id="settingsTunnel"></span></div>
-              <div class="info-card"><div class="info-icon">${icon("shield")}</div><strong>Cloudflare Mode</strong><span id="settingsCloudflareMode"></span></div>
               <div class="info-card"><div class="info-icon">${icon("monitor")}</div><strong>GUI Port</strong><span>${guiPort}</span></div>
               <div class="info-card"><div class="info-icon">${icon("refresh")}</div><strong>Gateway Port</strong><span>${gatewayPort}</span></div>
             </div>
@@ -2827,13 +2649,8 @@ function renderPage() {
         copy: document.querySelector("#copy"),
         copyText: document.querySelector("#copyText"),
         url: document.querySelector("#url"),
-        tunnelProviderInput: document.querySelector("#tunnelProviderInput"),
-        tunnelFallbackInput: document.querySelector("#tunnelFallbackInput"),
         ngrokAuthtoken: document.querySelector("#ngrokAuthtoken"),
         ngrokDomain: document.querySelector("#ngrokDomain"),
-        cloudflareModeInput: document.querySelector("#cloudflareModeInput"),
-        cloudflarePublicUrl: document.querySelector("#cloudflarePublicUrl"),
-        cloudflareToken: document.querySelector("#cloudflareToken"),
         saveTunnelConfig: document.querySelector("#saveTunnelConfig"),
         tunnelConfigStatus: document.querySelector("#tunnelConfigStatus"),
         projects: document.querySelector("#projects"),
@@ -2875,7 +2692,6 @@ function renderPage() {
         settingsProject: document.querySelector("#settingsProject"),
         settingsMode: document.querySelector("#settingsMode"),
         settingsTunnel: document.querySelector("#settingsTunnel"),
-        settingsCloudflareMode: document.querySelector("#settingsCloudflareMode"),
       };
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
@@ -2912,21 +2728,14 @@ function renderPage() {
         els.tunnelConfigStatus.textContent = "กำลังบันทึก Tunnel...";
         try {
           const response = await post("/api/tunnel/config", {
-            provider: els.tunnelProviderInput.value,
-            fallback: els.tunnelFallbackInput.value,
             ngrokAuthtoken: els.ngrokAuthtoken.value,
             ngrokDomain: els.ngrokDomain.value,
-            cloudflareMode: els.cloudflareModeInput.value,
-            cloudflarePublicUrl: els.cloudflarePublicUrl.value,
-            cloudflareToken: els.cloudflareToken.value,
           });
           if (!response) {
             els.tunnelConfigStatus.textContent = "บันทึกไม่สำเร็จ";
             return;
           }
-          els.ngrokAuthtoken.value = "";
-          els.cloudflareToken.value = "";
-          els.tunnelConfigStatus.textContent = "บันทึกแล้ว ถ้า Agent กำลังทำงานอยู่ให้ Stop แล้ว Start ใหม่";
+          els.ngrokAuthtoken.value = "";          els.tunnelConfigStatus.textContent = "บันทึกแล้ว ถ้า Agent กำลังทำงานอยู่ให้ Stop แล้ว Start ใหม่";
           renderTunnelConfig(response);
         } catch (error) {
           els.tunnelConfigStatus.textContent = error.message;
@@ -3194,23 +3003,12 @@ function renderPage() {
       }
 
       function renderTunnelConfig(data) {
-        setControlValue(els.tunnelProviderInput, data.tunnelProvider || "cloudflare");
-        setControlValue(els.tunnelFallbackInput, data.tunnelFallback || "ngrok");
-        setControlValue(els.cloudflareModeInput, data.cloudflareTunnelMode || "quick");
         setControlValue(els.ngrokDomain, data.ngrokDomain || "");
-        setControlValue(els.cloudflarePublicUrl, data.cloudflarePublicUrl || "");
         if (!els.ngrokAuthtoken.value && data.ngrokConfigured) {
-          els.ngrokAuthtoken.placeholder = "บันทึกไว้แล้ว ใส่ใหม่เมื่อต้องการเปลี่ยน";
-        }
-        if (!els.cloudflareToken.value) {
-          els.cloudflareToken.placeholder = data.cloudflareTunnelMode === "named"
-            ? "บันทึกไว้แล้วหรือวาง token ใหม่"
-            : "ใช้เฉพาะ Named Tunnel";
+          els.ngrokAuthtoken.placeholder = "????????????? ??????????????????????????";
         }
         if (!els.tunnelConfigStatus.textContent) {
-          els.tunnelConfigStatus.textContent = data.ngrokConfigured
-            ? "ngrok authtoken บันทึกไว้แล้ว"
-            : "ยังไม่ได้บันทึก ngrok authtoken";
+          els.tunnelConfigStatus.textContent = data.ngrokConfigured ? "ngrok authtoken ?????????????" : "??????????????? ngrok authtoken";
         }
       }
 
@@ -3236,9 +3034,7 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
-        els.settingsTunnel.textContent = data.tunnelProvider || "-";
-        els.settingsCloudflareMode.textContent = data.cloudflareTunnelMode || "-";
-        renderTunnelConfig(data);
+        els.settingsTunnel.textContent = data.tunnelProvider || "-";        renderTunnelConfig(data);
         const logHtml = data.logs.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
@@ -3359,8 +3155,8 @@ function renderPage() {
 
       function renderLogText(value) {
         return escapeHtml(value)
-          .replace(/(^|[\s,(])([+]\d+)(?=[\s,),]|$)/g, '$1<span class="log-insertions">$2</span>')
-          .replace(/(^|[\s,(])(-\d+)(?=[\s,),]|$)/g, '$1<span class="log-deletions">$2</span>');
+          .replace(/(^|[ \t\r\n,(])([+][0-9]+)(?=[ \t\r\n,),]|$)/g, '$1<span class="log-insertions">$2</span>')
+          .replace(/(^|[ \t\r\n,(])(-[0-9]+)(?=[ \t\r\n,),]|$)/g, '$1<span class="log-deletions">$2</span>');
       }
 
       refreshAll();

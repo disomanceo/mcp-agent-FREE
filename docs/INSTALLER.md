@@ -19,7 +19,6 @@ The installer will:
 - create `.env`
 - create `D:\AI-Workspace`
 - set `PERMISSION_MODE=WORK`
-- check/install Cloudflare Tunnel (`cloudflared`) when possible
 - check/install ngrok when possible
 - update ngrok automatically after install/check
 - configure ngrok automatically when `NGROK_AUTHTOKEN` is set
@@ -30,12 +29,12 @@ The automatic prerequisite installation uses `winget`. On Windows machines witho
 Default tunnel behavior:
 
 ```env
-TUNNEL_PROVIDER=cloudflare
-CLOUDFLARE_TUNNEL_MODE=quick
+TUNNEL_PROVIDER=ngrok
+TUNNEL_FALLBACK=none
 TUNNEL_FALLBACK=ngrok
 ```
 
-Cloudflare Quick Tunnel is the default because it does not require opening inbound ports and can provide a public HTTPS URL through `cloudflared`. If Cloudflare fails and ngrok is configured, the launcher falls back to ngrok.
+ngrok is the only supported tunnel provider in this installer. Configure an ngrok authtoken in the launcher before starting the agent.
 
 ngrok requires an account token before it can create a public URL. Get your token from:
 
@@ -80,7 +79,7 @@ Extract the zip and run:
 Install-Personal-MCP-Agent.cmd
 ```
 
-The batch installer downloads and runs the official `install.ps1` from GitHub. It avoids the unsigned `.exe` path while still installing/checking Node.js, Git, cloudflared, ngrok, npm dependencies, local config, WORK mode, and the Desktop shortcut.
+The batch installer downloads and runs the official `install.ps1` from GitHub. It avoids the unsigned `.exe` path while still installing/checking Node.js, Git, ngrok, npm dependencies, local config, WORK mode, and the Desktop shortcut.
 
 Developers can build the setup file locally with:
 

@@ -19,17 +19,10 @@ checks.push({
   detail: ngrokPath ?? "not found",
 });
 
-const cloudflaredPath = findCloudflared();
-checks.push({
-  name: "cloudflared.exe exists",
-  ok: Boolean(cloudflaredPath),
-  detail: cloudflaredPath ?? "not found; installer will try winget install Cloudflare.cloudflared",
-});
-
 checks.push({
   name: "Tunnel provider",
-  ok: ["cloudflare", "ngrok"].includes((process.env.TUNNEL_PROVIDER ?? "cloudflare").toLowerCase()),
-  detail: process.env.TUNNEL_PROVIDER ?? "cloudflare",
+  ok: (process.env.TUNNEL_PROVIDER ?? "ngrok").toLowerCase() === "ngrok",
+  detail: process.env.TUNNEL_PROVIDER ?? "ngrok",
 });
 
 const ngrokConfig = path.join(process.env.LOCALAPPDATA ?? "", "ngrok", "ngrok.yml");
@@ -120,39 +113,3 @@ function findNgrok() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
-function findCloudflared() {
-  const candidates = [
-    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "cloudflared.exe"),
-    path.join(os.homedir(), "AppData", "Local", "Programs", "cloudflared", "cloudflared.exe"),
-    path.join(
-      os.homedir(),
-      "AppData",
-      "Local",
-      "Microsoft",
-      "WinGet",
-      "Packages",
-      "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe",
-      "cloudflared.exe",
-    ),
-    path.join(
-      os.homedir(),
-      "AppData",
-      "Local",
-      "Microsoft",
-      "WinGet",
-      "Packages",
-      "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe",
-      "cloudflared-windows-amd64.exe",
-    ),
-    path.join(process.env.ProgramFiles ?? "", "cloudflared", "cloudflared.exe"),
-    path.join(process.env.ProgramFiles ?? "", "Cloudflare", "cloudflared.exe"),
-    path.join(process.env["ProgramFiles(x86)"] ?? "", "cloudflared", "cloudflared.exe"),
-    path.join(process.env["ProgramFiles(x86)"] ?? "", "Cloudflare", "cloudflared.exe"),
-  ];
-
-  for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
-    candidates.push(path.join(entry, "cloudflared.exe"));
-  }
-
-  return candidates.find((candidate) => fs.existsSync(candidate));
-}
