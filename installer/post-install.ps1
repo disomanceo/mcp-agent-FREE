@@ -36,7 +36,7 @@ function Find-Ngrok {
 function Install-Ngrok {
   $ngrok = Find-Ngrok
   if ($ngrok) {
-    return $ngrok
+    return (Update-Ngrok -NgrokPath $ngrok)
   }
 
   $winget = Get-Command "winget" -ErrorAction SilentlyContinue
@@ -46,7 +46,27 @@ function Install-Ngrok {
   }
 
   winget install --id Ngrok.Ngrok -e --accept-package-agreements --accept-source-agreements
-  Find-Ngrok
+  $ngrok = Find-Ngrok
+  if ($ngrok) {
+    return (Update-Ngrok -NgrokPath $ngrok)
+  }
+  return $null
+}
+
+function Update-Ngrok {
+  param([string]$NgrokPath)
+
+  if (-not $NgrokPath) {
+    return $null
+  }
+
+  Write-Host "Checking ngrok update..."
+  & $NgrokPath update | Out-Host
+  $updated = Find-Ngrok
+  if ($updated) {
+    return $updated
+  }
+  return $NgrokPath
 }
 
 function Configure-Ngrok {

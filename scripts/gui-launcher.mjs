@@ -258,6 +258,7 @@ async function startAll() {
   }
 
   state = { phase: "starting", mcpUrl: "", error: "", startedAt: new Date().toISOString() };
+  ensureWorkspaceDependencies();
   log("launcher", "Building project...");
 
   const build = spawnSync("npm run build", {
@@ -297,6 +298,37 @@ async function startAll() {
   state.phase = "ready";
   state.mcpUrl = `${publicUrl}/mcp`;
   log("launcher", `READY: ${state.mcpUrl}`);
+}
+
+function ensureWorkspaceDependencies() {
+  const check = spawnSync(
+    process.execPath,
+    ["-e", "import('@personal-mcp-agent/protocol').then(()=>import('@personal-mcp-agent/shared'))"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 20_000,
+    },
+  );
+  if (check.status === 0) {
+    return;
+  }
+
+  log("launcher", "Workspace dependencies are missing. Running npm install...");
+  if (check.stderr) log("launcher", check.stderr.trimEnd());
+  const install = spawnSync("npm install", {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    shell: true,
+    windowsHide: true,
+    timeout: 120_000,
+  });
+  if (install.stdout) log("install", install.stdout.trimEnd());
+  if (install.stderr) log("install", install.stderr.trimEnd());
+  if (install.status !== 0) {
+    throw new Error("npm install failed. See logs below.");
+  }
 }
 
 function startChild(label, command, args) {
