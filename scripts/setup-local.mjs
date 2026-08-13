@@ -26,6 +26,8 @@ if (!fs.existsSync(envPath)) {
       "PERMISSION_MODE=SAFE",
       "TUNNEL_PROVIDER=cloudflare",
       "TUNNEL_FALLBACK=ngrok",
+      "NGROK_AUTHTOKEN=",
+      "NGROK_DOMAIN=",
       "CLOUDFLARE_TUNNEL_MODE=quick",
       "CLOUDFLARE_TUNNEL_TOKEN=",
       "CLOUDFLARE_PUBLIC_URL=",
