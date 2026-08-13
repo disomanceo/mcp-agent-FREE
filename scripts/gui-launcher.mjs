@@ -1236,7 +1236,7 @@ function saveTunnelConfig({ ngrokAuthtoken, ngrokDomain }) {
   const cleanedNgrokDomain = ngrokDomain.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
 
   if (cleanedNgrokDomain && !/^[a-z0-9.-]+$/i.test(cleanedNgrokDomain)) {
-    throw new Error("ngrok domain ???????? hostname ???? abc123.ngrok-free.dev");
+    throw new Error("ngrok domain \u0e15\u0e49\u0e2d\u0e07\u0e40\u0e1b\u0e47\u0e19 hostname \u0e40\u0e0a\u0e48\u0e19 abc123.ngrok-free.dev");
   }
 
   const updates = {
@@ -2472,20 +2472,20 @@ function renderPage() {
                 <div id="url" class="url">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 URL \u0e43\u0e2b\u0e49\u0e01\u0e14 Start \u0e01\u0e48\u0e2d\u0e19</div>
                 <button id="copy">${icon("copy")} <span id="copyText">\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01</span></button>
               </div>
-              <p class="hint">ngrok ???? Tunnel ??????????????????? ??? URL ???????????? ChatGPT</p>
+              <p class="hint">ngrok \u0e40\u0e1b\u0e47\u0e19 Tunnel \u0e2b\u0e25\u0e31\u0e01\u0e15\u0e31\u0e27\u0e40\u0e14\u0e35\u0e22\u0e27\u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a \u0e43\u0e0a\u0e49 URL \u0e19\u0e35\u0e49\u0e19\u0e33\u0e44\u0e1b\u0e43\u0e2a\u0e48\u0e43\u0e19 ChatGPT</p>
               <div class="tunnel-settings">
                 <div class="row">
                   <div class="field">
                     <label for="ngrokAuthtoken">ngrok authtoken</label>
-                    <input id="ngrokAuthtoken" type="password" placeholder="??? token ??? ngrok dashboard" autocomplete="off" />
+                    <input id="ngrokAuthtoken" type="password" placeholder="\u0e27\u0e32\u0e07 token \u0e08\u0e32\u0e01 ngrok dashboard" autocomplete="off" />
                   </div>
                   <div class="field">
                     <label for="ngrokDomain">ngrok static/dev domain</label>
-                    <input id="ngrokDomain" placeholder="???? abc123.ngrok-free.dev" />
+                    <input id="ngrokDomain" placeholder="\u0e40\u0e0a\u0e48\u0e19 abc123.ngrok-free.dev" />
                   </div>
                 </div>
                 <div class="row">
-                  <button id="saveTunnelConfig">${icon("save")} ?????? ngrok</button>
+                  <button id="saveTunnelConfig">${icon("save")} \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 ngrok</button>
                 </div>
                 <div id="tunnelConfigStatus" class="secret-status"></div>
               </div>
@@ -3005,10 +3005,10 @@ function renderPage() {
       function renderTunnelConfig(data) {
         setControlValue(els.ngrokDomain, data.ngrokDomain || "");
         if (!els.ngrokAuthtoken.value && data.ngrokConfigured) {
-          els.ngrokAuthtoken.placeholder = "????????????? ??????????????????????????";
+          els.ngrokAuthtoken.placeholder = "\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e41\u0e25\u0e49\u0e27 \u0e43\u0e2a\u0e48\u0e43\u0e2b\u0e21\u0e48\u0e40\u0e21\u0e37\u0e48\u0e2d\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19";
         }
         if (!els.tunnelConfigStatus.textContent) {
-          els.tunnelConfigStatus.textContent = data.ngrokConfigured ? "ngrok authtoken ?????????????" : "??????????????? ngrok authtoken";
+          els.tunnelConfigStatus.textContent = data.ngrokConfigured ? "ngrok authtoken \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e41\u0e25\u0e49\u0e27" : "\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 ngrok authtoken";
         }
       }
 
@@ -3034,7 +3034,8 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
-        els.settingsTunnel.textContent = data.tunnelProvider || "-";        renderTunnelConfig(data);
+        els.settingsTunnel.textContent = data.tunnelProvider || "-";
+        renderTunnelConfig(data);
         const logHtml = data.logs.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";

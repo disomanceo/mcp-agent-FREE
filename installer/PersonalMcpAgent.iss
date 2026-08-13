@@ -1,5 +1,5 @@
 #define MyAppName "Personal MCP Agent"
-#define MyAppVersion "0.17.8"
+#define MyAppVersion "0.17.9"
 #define MyAppPublisher "disomanceo"
 #define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
 #define MyAppExeName "Personal MCP Agent.cmd"
