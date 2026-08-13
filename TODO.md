@@ -1,5 +1,20 @@
 # TODO
 
+## 2026-08-13 v1.0.6 Start Self-Repair for Missing Workspace Packages
+
+### Completed This Round
+
+- Fixed Start failure when `@personal-mcp-agent/protocol` or `@personal-mcp-agent/shared` is missing from `node_modules`.
+- Reworked startup checks so the app repairs workspace package links with `npm install` before build.
+- Added a post-build runtime artifact check for Gateway, Desktop Agent, Protocol, and Shared dist files.
+- Increased startup repair install timeout to 5 minutes for slower machines or first installs.
+- Bumped app and installer version to `1.0.6`.
+
+### Next TODO
+
+- Add a visible Repair button inside the GUI so users can trigger dependency repair without using a separate shortcut.
+- Show a Thai explanation when the installed app version is older than the latest GitHub release.
+
 ## 2026-08-13 v1.0.5 Stop Button Shutdown Fix
 
 ### Completed This Round

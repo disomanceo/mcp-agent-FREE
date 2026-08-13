@@ -287,6 +287,7 @@ async function startAll() {
   if (build.status !== 0) {
     throw new Error("Build failed. See logs below.");
   }
+  ensureRuntimeArtifacts();
 
   const gateway = startChild("gateway", process.execPath, ["apps/gateway/dist/index.js"]);
   await waitUntil(
@@ -322,33 +323,48 @@ async function startAll() {
 }
 
 function ensureWorkspaceDependencies() {
-  const check = spawnSync(
-    process.execPath,
-    ["-e", "import('@personal-mcp-agent/protocol').then(()=>import('@personal-mcp-agent/shared'))"],
-    {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 20_000,
-    },
-  );
-  if (check.status === 0) {
+  if (workspacePackagesLinked()) {
     return;
   }
 
   log("launcher", "Workspace dependencies are missing. Running npm install...");
-  if (check.stderr) log("launcher", check.stderr.trimEnd());
   const install = spawnSync("npm install", {
     cwd: process.cwd(),
     encoding: "utf8",
     shell: true,
     windowsHide: true,
-    timeout: 120_000,
+    timeout: 300_000,
   });
   if (install.stdout) log("install", install.stdout.trimEnd());
   if (install.stderr) log("install", install.stderr.trimEnd());
   if (install.status !== 0) {
     throw new Error("npm install failed. See logs below.");
+  }
+  if (!workspacePackagesLinked()) {
+    throw new Error(
+      "Workspace packages are still missing after npm install. Run Repair Personal MCP Agent, then start again.",
+    );
+  }
+}
+
+function workspacePackagesLinked() {
+  const requiredPaths = [
+    "node_modules/@personal-mcp-agent/protocol/package.json",
+    "node_modules/@personal-mcp-agent/shared/package.json",
+  ];
+  return requiredPaths.every((entry) => fs.existsSync(path.join(process.cwd(), entry)));
+}
+
+function ensureRuntimeArtifacts() {
+  const requiredPaths = [
+    "packages/protocol/dist/index.js",
+    "packages/shared/dist/index.js",
+    "apps/gateway/dist/index.js",
+    "apps/desktop-agent/dist/index.js",
+  ];
+  const missing = requiredPaths.filter((entry) => !fs.existsSync(path.join(process.cwd(), entry)));
+  if (missing.length > 0) {
+    throw new Error(`Build did not create required runtime files: ${missing.join(", ")}`);
   }
 }
 
