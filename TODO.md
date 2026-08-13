@@ -1,5 +1,20 @@
 # TODO
 
+## 2026-08-13 v1.0.2 Batch/CMD Usability Pass
+
+### Completed This Round
+
+- Added root `Install Personal MCP Agent.cmd` for users who prefer double-click batch installation.
+- Added `Update Personal MCP Agent.cmd`, `Repair Personal MCP Agent.cmd`, and `Run Doctor.cmd`.
+- Updated installer shortcuts to use `.cmd` wrappers instead of direct PowerShell commands where possible.
+- Updated `install.ps1` to create Desktop shortcuts for Start, Stop, Update, Repair, and Doctor.
+
+### Next TODO
+
+- Add an in-app Help page that explains when to use Start, Stop, Update, Repair, and Doctor.
+- Add a single "Reset stuck app" button inside the GUI that calls the same emergency stop logic.
+- Consider code signing the installer to reduce Windows SmartScreen warnings.
+
 ## Current Status
 
 Phase 3 Complete: Controlled WORK mode with git commit/push tools

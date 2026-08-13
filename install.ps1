@@ -230,21 +230,49 @@ if (-not $SkipNgrok) {
   }
 }
 
-Invoke-Step "Creating Desktop shortcut" {
-  $cmdPath = Join-Path $InstallDir "Personal MCP Agent.cmd"
+function New-DesktopShortcut {
+  param(
+    [string]$Name,
+    [string]$TargetPath,
+    [string]$Description
+  )
+
   $desktop = [Environment]::GetFolderPath("Desktop")
-  $shortcutPath = Join-Path $desktop "Personal MCP Agent.lnk"
+  $shortcutPath = Join-Path $desktop "$Name.lnk"
   $shell = New-Object -ComObject WScript.Shell
   $shortcut = $shell.CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = $cmdPath
+  $shortcut.TargetPath = $TargetPath
   $shortcut.WorkingDirectory = $InstallDir
-  $shortcut.Description = "Start Personal MCP Agent for ChatGPT"
+  $shortcut.Description = $Description
   $iconPath = Join-Path $InstallDir "assets\app-icon.ico"
   if (Test-Path -LiteralPath $iconPath) {
     $shortcut.IconLocation = $iconPath
   }
   $shortcut.Save()
   Write-Host "Shortcut created: $shortcutPath"
+}
+
+Invoke-Step "Creating Desktop shortcuts" {
+  New-DesktopShortcut `
+    -Name "Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Personal MCP Agent.cmd") `
+    -Description "Start Personal MCP Agent for ChatGPT"
+  New-DesktopShortcut `
+    -Name "Stop Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Stop Personal MCP Agent.cmd") `
+    -Description "Emergency stop for Personal MCP Agent processes"
+  New-DesktopShortcut `
+    -Name "Update Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Update Personal MCP Agent.cmd") `
+    -Description "Update Personal MCP Agent from GitHub"
+  New-DesktopShortcut `
+    -Name "Repair Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Repair Personal MCP Agent.cmd") `
+    -Description "Reinstall dependencies and run diagnostics"
+  New-DesktopShortcut `
+    -Name "Run Doctor" `
+    -TargetPath (Join-Path $InstallDir "Run Doctor.cmd") `
+    -Description "Check Personal MCP Agent setup"
 }
 
 Write-Host ""
