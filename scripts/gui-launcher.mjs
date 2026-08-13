@@ -92,6 +92,16 @@ app.post("/api/projects/from-url", (req, res) => {
   }
 });
 
+app.post("/api/projects/from-local", (req, res) => {
+  try {
+    const sourcePath = String(req.body?.path ?? "");
+    const result = addProjectFromLocal(sourcePath);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/projects/delete", (req, res) => {
   try {
     const project = String(req.body?.project ?? "");
@@ -130,6 +140,15 @@ app.post("/api/git/commit", (req, res) => {
       files: Array.isArray(req.body?.files) ? req.body.files.map(String) : [],
       message: String(req.body?.message ?? ""),
     });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/git/dev-test", async (req, res) => {
+  try {
+    const result = await runDevTest(String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""));
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: messageOf(error) });
@@ -536,7 +555,9 @@ function getGitStatus(project) {
   const files = porcelain.split(/\r?\n/).map(parsePorcelainLine).filter(Boolean);
   const suggestedMessage = suggestCommitMessage(files);
   const tracking = gitTrackingStatus(projectPath);
-  return { project, branch, remote, latestCommit, tracking, files, suggestedMessage };
+  const packageJson = readJson(path.join(projectPath, "package.json"));
+  const canRunDev = Boolean(packageJson?.scripts?.dev);
+  return { project, branch, remote, latestCommit, tracking, files, suggestedMessage, canRunDev };
 }
 
 function gitCommitFromGui({ project, files, message }) {
@@ -576,6 +597,50 @@ function gitCommitFromGui({ project, files, message }) {
   log("git", `Committed ${hash}: ${message.trim()}`);
   markProjectEvent(project, "git", `Commit ${hash}`);
   return { ok: true, hash, output: commit.stdout.trim() };
+}
+
+async function runDevTest(project) {
+  const projectPath = requireProjectDirectory(project);
+  const packageJson = readJson(path.join(projectPath, "package.json"));
+  if (!packageJson?.scripts?.dev) {
+    throw new Error("This project does not have npm script: dev.");
+  }
+
+  log("test", `Starting npm run dev test for ${project}...`);
+  const child = spawn(npmRunnerCommand(), npmRunnerArgs(["run", "dev"]), {
+    cwd: projectPath,
+    env: { ...process.env, CI: "1", BROWSER: "none" },
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  const append = (chunk) => {
+    output = `${output}${chunk.toString()}`.slice(-5000);
+  };
+  child.stdout.on("data", append);
+  child.stderr.on("data", append);
+
+  const result = await waitForDevServer(child, () => output);
+  markProjectEvent(project, "test", "Local dev test passed");
+  log("test", `Local dev test passed for ${project}`);
+  return result;
+}
+
+async function waitForDevServer(child, output) {
+  const readyPattern = /(local:|ready|started|compiled|listening|localhost|127\.0\.0\.1|http:\/\/)/i;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 15_000) {
+    if (child.exitCode !== null) {
+      throw new Error(`npm run dev exited early.\n${output().trim()}`);
+    }
+    if (readyPattern.test(output())) {
+      child.kill();
+      return { ok: true, output: output().trim() };
+    }
+    await delay(400);
+  }
+  child.kill();
+  return { ok: true, output: output().trim() || "Dev server stayed running for 15 seconds." };
 }
 
 function gitPushFromGui(project) {
@@ -690,6 +755,28 @@ function packageRunnerCommand() {
 function packageRunnerArgs(command, args) {
   if (process.platform !== "win32") return [command, ...args];
   return [findNpxCli(), command, ...args];
+}
+
+function npmRunnerCommand() {
+  if (process.platform === "win32") return process.execPath;
+  return "npm";
+}
+
+function npmRunnerArgs(args) {
+  if (process.platform !== "win32") return args;
+  return [findNpmCli(), ...args];
+}
+
+function findNpmCli() {
+  const candidates = [
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "nodejs", "node_modules", "npm", "bin", "npm-cli.js"),
+    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+  ];
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) {
+    throw new Error("Cannot find npm-cli.js. Reinstall Node.js or add npm to PATH.");
+  }
+  return found;
 }
 
 function findNpxCli() {
@@ -835,6 +922,57 @@ function addProjectFromUrl(rawUrl) {
   return createLinkedProject(parsed);
 }
 
+function addProjectFromLocal(rawPath) {
+  const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
+  if (!cleanedPath) throw new Error("Local folder path is required.");
+  const sourcePath = path.resolve(cleanedPath);
+  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
+    throw new Error(`Local folder not found: ${sourcePath}`);
+  }
+
+  const workspaceRoot = fs.realpathSync(requireWorkspaceRoot());
+  const resolvedSource = fs.realpathSync(sourcePath);
+  const projectName = cleanSlug(path.basename(resolvedSource));
+  if (!projectName) throw new Error("Could not determine a project name from this folder.");
+
+  let targetPath;
+  let copied = false;
+  if (resolvedSource === workspaceRoot || resolvedSource.startsWith(workspaceRoot + path.sep)) {
+    targetPath = resolvedSource;
+  } else {
+    targetPath = path.join(workspaceRoot, uniqueProjectName(workspaceRoot, projectName));
+    fs.cpSync(resolvedSource, targetPath, {
+      recursive: true,
+      filter: (source) => !isSkippedLocalImportPath(source, resolvedSource),
+    });
+    copied = true;
+  }
+
+  const project = {
+    type: "local",
+    name: path.basename(targetPath),
+    sourcePath: resolvedSource,
+    displayUrl: resolvedSource,
+  };
+  writeProjectMetadata(targetPath, project);
+  upsertEnvValue("DEFAULT_PROJECT", project.name);
+  process.env.DEFAULT_PROJECT = project.name;
+  log("launcher", `${copied ? "Imported" : "Linked"} local project: ${project.name}`);
+  markProjectEvent(project.name, "local", copied ? "Imported local folder" : "Added local folder");
+  return { ok: true, project: project.name, kind: "local", copied, path: targetPath };
+}
+
+function isSkippedLocalImportPath(source, root) {
+  const relative = path.relative(root, source).replaceAll("\\", "/");
+  if (!relative) return false;
+  const parts = relative.split("/");
+  return parts.some((part) =>
+    ["node_modules", ".next", ".nuxt", "dist", "build", ".turbo", ".cache", "coverage"].includes(
+      part,
+    ),
+  );
+}
+
 function parseProjectUrl(rawUrl) {
   const trimmed = rawUrl.trim();
   if (!trimmed) throw new Error("URL is required.");
@@ -934,6 +1072,12 @@ function createLinkedProject(project) {
 }
 
 function writeProjectMetadata(projectPath, project) {
+  const note =
+    project.type === "github"
+      ? "Local git repository cloned from GitHub."
+      : project.type === "local"
+        ? "Local project folder imported for Personal MCP Agent editing."
+        : "Linked project wrapper. Add or sync source files here before asking ChatGPT to edit code.";
   fs.mkdirSync(path.join(projectPath, ".personal-mcp"), { recursive: true });
   fs.writeFileSync(
     path.join(projectPath, ".personal-mcp", "project.json"),
@@ -941,10 +1085,7 @@ function writeProjectMetadata(projectPath, project) {
       {
         ...project,
         addedAt: new Date().toISOString(),
-        note:
-          project.type === "github"
-            ? "Local git repository cloned from GitHub."
-            : "Linked project wrapper. Add or sync source files here before asking ChatGPT to edit code.",
+        note,
       },
       null,
       2,
@@ -1834,6 +1975,13 @@ function renderPage() {
                     <button id="addProjectUrl">${icon("plus")} เพิ่ม URL</button>
                   </div>
                   <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
+
+                  <label class="title" for="localProjectPath" style="margin:10px 0 0">\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e42\u0e1b\u0e23\u0e40\u0e08\u0e01\u0e15\u0e4c\u0e08\u0e32\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e43\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07</label>
+                  <div class="row">
+                    <input id="localProjectPath" placeholder="D:\\Projects\\my-app" />
+                    <button id="addLocalProject">${icon("folder")} \u0e40\u0e1e\u0e34\u0e48\u0e21 Local</button>
+                  </div>
+                  <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
                 </div>
               </section>
 
@@ -1907,6 +2055,9 @@ function renderPage() {
             <div id="gitSummary" class="hint" style="margin-top:10px"></div>
             <div id="gitFiles" class="file-list"></div>
             <div class="column">
+              <div class="row">
+                <button id="gitDevTest">${icon("play")} \u0e17\u0e14\u0e2a\u0e2d\u0e1a Local: npm run dev</button>
+              </div>
               <label class="title" for="commitMessage" style="margin:0">Commit message</label>
               <input id="commitMessage" placeholder="เช่น fix: update payment tracker UI" />
               <div class="row">
@@ -1965,6 +2116,8 @@ function renderPage() {
         projects: document.querySelector("#projects"),
         projectUrl: document.querySelector("#projectUrl"),
         addProjectUrl: document.querySelector("#addProjectUrl"),
+        localProjectPath: document.querySelector("#localProjectPath"),
+        addLocalProject: document.querySelector("#addLocalProject"),
         setProject: document.querySelector("#setProject"),
         workspace: document.querySelector("#workspace"),
         activeProject: document.querySelector("#activeProject"),
@@ -1980,6 +2133,7 @@ function renderPage() {
         gitSelectAll: document.querySelector("#gitSelectAll"),
         gitFiles: document.querySelector("#gitFiles"),
         gitSummary: document.querySelector("#gitSummary"),
+        gitDevTest: document.querySelector("#gitDevTest"),
         commitMessage: document.querySelector("#commitMessage"),
         gitCommit: document.querySelector("#gitCommit"),
         gitPush: document.querySelector("#gitPush"),
@@ -2029,6 +2183,11 @@ function renderPage() {
         els.projectUrl.value = "";
         await refreshAll();
       });
+      els.addLocalProject.addEventListener("click", async () => {
+        await post("/api/projects/from-local", { path: els.localProjectPath.value });
+        els.localProjectPath.value = "";
+        await refreshAll();
+      });
       els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
       els.clearLogsFull.addEventListener("click", () => post("/api/logs/clear"));
       els.refreshProjects.addEventListener("click", refreshAll);
@@ -2041,6 +2200,18 @@ function renderPage() {
         document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
           item.checked = true;
         });
+      });
+      els.gitDevTest.addEventListener("click", async () => {
+        els.gitDevTest.disabled = true;
+        els.gitOutput.textContent = "กำลังทดสอบ local ด้วย npm run dev...";
+        try {
+          const response = await post("/api/git/dev-test", { project: els.gitProject.value });
+          if (response?.ok) {
+            els.gitOutput.textContent = "ทดสอบ local ผ่าน: npm run dev เริ่มทำงานได้\\n" + (response.output || "");
+          }
+        } finally {
+          els.gitDevTest.disabled = false;
+        }
       });
       els.gitCommit.addEventListener("click", async () => {
         const files = Array.from(document.querySelectorAll(".git-file-check:checked")).map((item) => item.value);
@@ -2155,6 +2326,8 @@ function renderPage() {
         if (!els.commitMessage.value && data.suggestedMessage) {
           els.commitMessage.value = data.suggestedMessage;
         }
+        els.gitDevTest.disabled = !data.canRunDev;
+        els.gitDevTest.title = data.canRunDev ? "" : "This project does not have npm run dev.";
         els.gitPush.classList.toggle("push-ready", tracking.ahead > 0 && files.length === 0);
         els.gitPush.textContent = tracking.ahead > 0
           ? '\u2191 Push \u0e02\u0e36\u0e49\u0e19 GitHub (' + tracking.ahead + ')'
