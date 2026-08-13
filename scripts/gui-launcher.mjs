@@ -151,10 +151,11 @@ app.post("/api/start", async (_req, res) => {
 });
 
 app.post("/api/stop", (_req, res) => {
-  cleanup();
+  cleanup({ includeOrphans: false });
   state = { ...state, phase: "stopped", mcpUrl: "", startedAt: null };
-  log("launcher", "Stopped Gateway, Agent, and ngrok.");
-  res.json({ ok: true, exiting: false });
+  log("launcher", "Stopped Gateway, Agent, ngrok, and local dev servers. Closing GUI...");
+  res.json({ ok: true, exiting: true });
+  setTimeout(() => shutdown(), 250).unref();
 });
 
 app.post("/api/git/commit", (req, res) => {
@@ -378,7 +379,8 @@ function startChild(label, command, args) {
   return child;
 }
 
-function cleanup() {
+function cleanup(options = {}) {
+  const includeOrphans = options.includeOrphans !== false;
   for (const child of children.splice(0).reverse()) {
     killProcessTree(child.pid);
   }
@@ -386,7 +388,9 @@ function cleanup() {
     killProcessTree(entry.child.pid);
   }
   devServers.clear();
-  cleanupOrphanProcesses();
+  if (includeOrphans) {
+    cleanupOrphanProcesses();
+  }
 }
 
 function killProcessTree(pid) {
@@ -407,8 +411,9 @@ function killProcessTree(pid) {
 }
 
 function shutdown() {
-  cleanup();
+  cleanup({ includeOrphans: false });
   server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1500).unref();
 }
 
 async function gatewayHealthy() {
@@ -2523,7 +2528,19 @@ function renderPage() {
       });
       bind(els.settingsTop, "click", () => showView("settings"));
       bind(els.start, "click", () => post("/api/start"));
-      bind(els.stop, "click", () => post("/api/stop"));
+      bind(els.stop, "click", async () => {
+        els.stop.disabled = true;
+        els.start.disabled = true;
+        els.status.textContent = "Closing...";
+        els.status.className = "status";
+        await fetch("/api/stop", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        els.heroTitle.textContent = "Agent is closing";
+        els.url.textContent = "The app is closing. You can reopen it from the Desktop shortcut.";
+      });
       bind(els.refresh, "click", refreshAll);
       bind(els.themeToggle, "click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";

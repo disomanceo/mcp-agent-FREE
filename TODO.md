@@ -1,5 +1,19 @@
 # TODO
 
+## 2026-08-13 v1.0.5 Stop Button Shutdown Fix
+
+### Completed This Round
+
+- Changed the GUI Stop button to stop child services and then close the GUI process.
+- Avoided the extra refresh request after `/api/stop`, which could make the page look stuck while the server is shutting down.
+- Kept emergency cleanup available through `Stop Personal MCP Agent.cmd` for old or stuck processes.
+- Bumped app and installer version to `1.0.5`.
+
+### Next TODO
+
+- Add a visible "Reset stuck app" button that calls the emergency stop helper from inside the GUI.
+- Add a post-stop browser page message or lightweight local HTML fallback for users whose browser remains open after the app exits.
+
 ## 2026-08-13 v1.0.4 ChatGPT Completion Status Alignment
 
 ### Completed This Round
