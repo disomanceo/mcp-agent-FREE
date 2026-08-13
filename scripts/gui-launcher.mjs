@@ -631,6 +631,9 @@ function gitCommitFromGui({ project, files, message }) {
 
   const hash = gitSummary(projectPath, ["rev-parse", "--short", "HEAD"]).trim();
   log("git", `Committed ${hash}: ${message.trim()}`);
+  if (commit.stdout.trim()) {
+    log("git", commit.stdout.trim());
+  }
   markProjectEvent(project, "git", `Commit ${hash}`);
   return { ok: true, hash, output: commit.stdout.trim() };
 }
@@ -1961,6 +1964,14 @@ function renderPage() {
       .log-line { color: #64e48f; }
       .log-line.code { color: #38bdf8; }
       .log-line.error { color: #ff8a92; }
+      .log-insertions {
+        color: #86efac;
+        font-weight: 800;
+      }
+      .log-deletions {
+        color: #ff8a92;
+        font-weight: 800;
+      }
       .log-line.complete {
         color: #86efac;
         font-weight: 800;
@@ -2525,7 +2536,7 @@ function renderPage() {
         const logHtml = data.logs.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
-          return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + escapeHtml(item.text);
+          return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + renderLogText(item.text);
         }).join("\\n");
         els.logs.innerHTML = logHtml;
         els.logsFull.innerHTML = logHtml;
@@ -2623,6 +2634,12 @@ function renderPage() {
           '"': "&quot;",
           "'": "&#39;",
         })[char]);
+      }
+
+      function renderLogText(value) {
+        return escapeHtml(value)
+          .replace(/(^|[\s,(])([+]\d+)(?=[\s,),]|$)/g, '$1<span class="log-insertions">$2</span>')
+          .replace(/(^|[\s,(])(-\d+)(?=[\s,),]|$)/g, '$1<span class="log-deletions">$2</span>');
       }
 
       refreshAll();

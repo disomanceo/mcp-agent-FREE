@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import dotenv from "dotenv";
@@ -10,6 +11,22 @@ const checks = [];
 checkCommand("node", ["--version"], (stdout) => /^v(2[2-9]|[3-9]\d)\./.test(stdout.trim()));
 checkCommand("npm", ["--version"]);
 checkCommand("git", ["--version"]);
+
+const ngrokPath = findNgrok();
+checks.push({
+  name: "ngrok.exe exists",
+  ok: Boolean(ngrokPath),
+  detail: ngrokPath ?? "not found",
+});
+
+const ngrokConfig = path.join(process.env.LOCALAPPDATA ?? "", "ngrok", "ngrok.yml");
+checks.push({
+  name: "ngrok authtoken config",
+  ok: fs.existsSync(ngrokConfig),
+  detail: fs.existsSync(ngrokConfig)
+    ? ngrokConfig
+    : "missing; run: ngrok config add-authtoken YOUR_TOKEN_HERE",
+});
 
 checks.push({
   name: ".env exists",
@@ -65,4 +82,27 @@ function checkCommand(
     ok: result.status === 0 && validate(output),
     detail: output || "not found",
   });
+}
+
+function findNgrok() {
+  const candidates = [
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "ngrok.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Programs", "ngrok", "ngrok.exe"),
+    path.join(
+      os.homedir(),
+      "AppData",
+      "Local",
+      "Microsoft",
+      "WinGet",
+      "Packages",
+      "Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe",
+      "ngrok.exe",
+    ),
+  ];
+
+  for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
+    candidates.push(path.join(entry, "ngrok.exe"));
+  }
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
 }

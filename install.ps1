@@ -1,6 +1,7 @@
 param(
   [string]$InstallDir = "D:\personal-mcp-agent",
   [string]$WorkspaceRoot = "D:\AI-Workspace",
+  [string]$NgrokAuthtoken = $env:NGROK_AUTHTOKEN,
   [switch]$SkipNgrok
 )
 
@@ -17,6 +18,66 @@ function Invoke-Step($Title, [scriptblock]$Action) {
   Write-Host ""
   Write-Host "==> $Title" -ForegroundColor Cyan
   & $Action
+}
+
+function Find-Ngrok {
+  $candidates = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\ngrok.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\ngrok\ngrok.exe"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe\ngrok.exe")
+  )
+
+  $command = Get-Command "ngrok" -ErrorAction SilentlyContinue
+  if ($command) {
+    $candidates += $command.Source
+  }
+
+  foreach ($entry in ($env:PATH -split [IO.Path]::PathSeparator)) {
+    if ($entry) {
+      $candidates += (Join-Path $entry "ngrok.exe")
+    }
+  }
+
+  $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+
+function Install-Ngrok {
+  $ngrok = Find-Ngrok
+  if ($ngrok) {
+    return $ngrok
+  }
+
+  $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Write-Warning "ngrok not found and winget is unavailable. Install ngrok manually from https://ngrok.com/download"
+    return $null
+  }
+
+  winget install --id Ngrok.Ngrok -e --accept-package-agreements --accept-source-agreements
+  Find-Ngrok
+}
+
+function Configure-Ngrok {
+  param([string]$NgrokPath)
+
+  if (-not $NgrokPath) {
+    return
+  }
+
+  Write-Host "ngrok found: $NgrokPath"
+
+  if ($NgrokAuthtoken) {
+    & $NgrokPath config add-authtoken $NgrokAuthtoken | Out-Host
+    return
+  }
+
+  $configPath = Join-Path $env:LOCALAPPDATA "ngrok\ngrok.yml"
+  if (-not (Test-Path -LiteralPath $configPath)) {
+    Write-Warning "ngrok is installed, but no authtoken is configured yet."
+    Write-Host "Get your token: https://dashboard.ngrok.com/get-started/your-authtoken"
+    Write-Host "Then run:"
+    Write-Host "  ngrok config add-authtoken YOUR_TOKEN_HERE"
+  }
 }
 
 Invoke-Step "Checking required tools" {
@@ -55,16 +116,9 @@ Invoke-Step "Creating local configuration" {
 }
 
 if (-not $SkipNgrok) {
-  Invoke-Step "Checking ngrok" {
-    $ngrok = Get-Command "ngrok" -ErrorAction SilentlyContinue
-    if (-not $ngrok) {
-      $winget = Get-Command "winget" -ErrorAction SilentlyContinue
-      if ($winget) {
-        winget install --id Ngrok.Ngrok -e --accept-package-agreements --accept-source-agreements
-      } else {
-        Write-Warning "ngrok not found and winget is unavailable. Install ngrok manually from https://ngrok.com/download"
-      }
-    }
+  Invoke-Step "Installing/checking ngrok" {
+    $ngrok = Install-Ngrok
+    Configure-Ngrok -NgrokPath $ngrok
   }
 }
 

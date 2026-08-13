@@ -1,5 +1,5 @@
 #define MyAppName "Personal MCP Agent"
-#define MyAppVersion "0.16.1"
+#define MyAppVersion "0.16.3"
 #define MyAppPublisher "disomanceo"
 #define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
 #define MyAppExeName "Personal MCP Agent.cmd"
@@ -42,3 +42,4 @@ Name: "{group}\Update Personal MCP Agent"; Filename: "powershell.exe"; Parameter
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\post-install.ps1"" -InstallDir ""{app}"" -WorkspaceRoot ""D:\AI-Workspace"""; WorkingDir: "{app}"; Description: "Install dependencies and configure Personal MCP Agent"; Flags: postinstall waituntilterminated
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Start Personal MCP Agent"; Flags: nowait shellexec skipifsilent

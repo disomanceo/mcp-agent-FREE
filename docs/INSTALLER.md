@@ -18,7 +18,27 @@ The installer will:
 - create `D:\AI-Workspace`
 - set `PERMISSION_MODE=WORK`
 - check/install ngrok when possible
+- configure ngrok automatically when `NGROK_AUTHTOKEN` is set
 - create a Desktop shortcut named `Personal MCP Agent`
+
+ngrok requires an account token before it can create a public URL. Get your token from:
+
+```text
+https://dashboard.ngrok.com/get-started/your-authtoken
+```
+
+Then either run:
+
+```powershell
+ngrok config add-authtoken YOUR_TOKEN_HERE
+```
+
+Or install with:
+
+```powershell
+$env:NGROK_AUTHTOKEN="YOUR_TOKEN_HERE"
+irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1 | iex
+```
 
 ## Setup.exe installer
 
