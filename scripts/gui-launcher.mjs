@@ -1491,22 +1491,32 @@ function formatAuditEvent(event) {
 function completionLog(items) {
   const latest = [...items].reverse().find((item) => item.label === "code");
   if (!latest?.success) return null;
-  const completeTools = [
-    "write_file",
-    "git_stage",
-    "git_commit",
-    "git_push",
-    "npm_lint",
-    "npm_build",
-    "npm_test",
-  ];
-  if (!completeTools.some((tool) => latest.text.includes(tool))) return null;
   const now = new Date();
+  if (latest.text.includes("git_push")) {
+    return {
+      timestamp: now.toISOString(),
+      time: now.toLocaleTimeString(),
+      label: "complete",
+      text: "PUSHED - Sent to GitHub. Wait for ChatGPT to finish its final reply before starting another task.",
+      success: true,
+    };
+  }
+  if (latest.text.includes("git_commit")) {
+    return {
+      timestamp: now.toISOString(),
+      time: now.toLocaleTimeString(),
+      label: "local_done",
+      text: "COMMIT DONE - Local commit is ready. Wait for ChatGPT to finish, then push when you are ready.",
+      success: true,
+    };
+  }
+  const localDoneTools = ["write_file", "git_stage", "npm_lint", "npm_build", "npm_test"];
+  if (!localDoneTools.some((tool) => latest.text.includes(tool))) return null;
   return {
     timestamp: now.toISOString(),
     time: now.toLocaleTimeString(),
-    label: "complete",
-    text: "CODE COMPLETE · รอบล่าสุดเสร็จแล้ว ตรวจ Git แล้วกด Push ได้เมื่อพร้อม",
+    label: "local_done",
+    text: "LOCAL DONE - The computer-side work finished. Wait until ChatGPT finishes its reply, then check Git and push when ready.",
     success: true,
   };
 }
@@ -2151,6 +2161,11 @@ function renderPage() {
       .log-line { color: #64e48f; }
       .log-line.code { color: #38bdf8; }
       .log-line.error { color: #ff8a92; }
+      .log-line.local-done {
+        color: #facc15;
+        font-weight: 800;
+        animation: pulseComplete 1.4s ease-in-out 3;
+      }
       .log-insertions {
         color: #86efac;
         font-weight: 800;
@@ -2812,8 +2827,8 @@ function renderPage() {
         renderTunnelConfig(data);
         const logItems = Array.isArray(data.logs) ? data.logs : [];
         const logHtml = logItems.map((item) => {
-          const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
-          const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
+          const lineClass = item.label === "local_done" ? "log-line local-done" : item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
+          const level = item.label === "local_done" ? "WAIT" : item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
           return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + renderLogText(item.text);
         }).join("\\n");
         els.logs.innerHTML = logHtml;

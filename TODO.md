@@ -1,5 +1,19 @@
 # TODO
 
+## 2026-08-13 v1.0.4 ChatGPT Completion Status Alignment
+
+### Completed This Round
+
+- Changed the auto summary line after local code/build/test work from `CODE COMPLETE` to a `WAIT` state.
+- The log now tells users that computer-side work is finished, but they should wait for ChatGPT to finish its final reply before checking Git or pushing.
+- Split final log hints into clearer states: local work done, local commit done, and GitHub push done.
+- Bumped app and installer version to `1.0.4`.
+
+### Next TODO
+
+- Add an explicit "ChatGPT response finished" checklist hint in the Git Assistant before enabling beginner-friendly push guidance.
+- Consider adding a small manual "Mark chat finished" button for users who want the app log to match the visible ChatGPT page.
+
 ## 2026-08-13 v1.0.3 ngrok Auth and Dashboard Restore
 
 ### Completed This Round
