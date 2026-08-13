@@ -12,8 +12,8 @@ const app = express();
 const guiPort = Number(process.env.GUI_PORT ?? 8790);
 const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
-let tunnelProvider = (process.env.TUNNEL_PROVIDER ?? "cloudflare").toLowerCase();
-let tunnelFallback = (process.env.TUNNEL_FALLBACK ?? "ngrok").toLowerCase();
+let tunnelProvider = (process.env.TUNNEL_PROVIDER ?? "ngrok").toLowerCase();
+let tunnelFallback = (process.env.TUNNEL_FALLBACK ?? "cloudflare").toLowerCase();
 let cloudflareTunnelMode = (process.env.CLOUDFLARE_TUNNEL_MODE ?? "quick").toLowerCase();
 if (tunnelFallback === "none") tunnelFallback = "";
 const children = [];
@@ -1993,15 +1993,15 @@ function renderPage() {
       .hero-card {
         min-height: 142px;
         display: grid;
-        grid-template-columns: 142px minmax(280px, 0.72fr) minmax(360px, 1fr);
+        grid-template-columns: 120px minmax(430px, 0.95fr) minmax(420px, 1fr);
         align-items: center;
-        gap: 22px;
+        gap: 18px;
         padding: 18px 24px;
         margin-bottom: 14px;
       }
       .agent-orb {
-        width: 112px;
-        height: 112px;
+        width: 104px;
+        height: 104px;
         display: grid;
         place-items: center;
         border: 8px solid rgba(30, 189, 114, 0.3);
@@ -2080,6 +2080,27 @@ function renderPage() {
         color: var(--green-2);
         font-size: 12px;
         font-weight: 700;
+      }
+      .hero-system-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .hero-system-grid .info-card {
+        min-height: 86px;
+        padding: 10px;
+      }
+      .hero-system-grid .info-icon {
+        width: 24px;
+        height: 24px;
+        margin-bottom: 8px;
+      }
+      .hero-system-grid .info-card strong {
+        margin-bottom: 5px;
+        font-size: 12px;
+      }
+      .hero-system-grid .info-card span {
+        font-size: 13px;
       }
       .stack { display: grid; gap: 14px; }
       .view { display: none; }
@@ -2571,6 +2592,11 @@ function renderPage() {
                 <button id="stop" class="danger">${icon("square")} หยุด</button>
                 <button id="refresh">${icon("refresh")} รีเฟรช</button>
               </div>
+              <div class="info-grid hero-system-grid">
+                <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
+                <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
+                <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+              </div>
             </div>
             <div class="hero-url-panel">
               <div class="title">MCP URL \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a ChatGPT</div>
@@ -2578,7 +2604,7 @@ function renderPage() {
                 <div id="url" class="url">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 URL \u0e43\u0e2b\u0e49\u0e01\u0e14 Start \u0e01\u0e48\u0e2d\u0e19</div>
                 <button id="copy">${icon("copy")} <span id="copyText">\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01</span></button>
               </div>
-              <p class="hint">Cloudflare \u0e40\u0e1b\u0e47\u0e19\u0e04\u0e48\u0e32\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e32\u0e19 \u0e16\u0e49\u0e32\u0e40\u0e1b\u0e34\u0e14\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e08\u0e30\u0e2a\u0e33\u0e23\u0e2d\u0e07\u0e14\u0e49\u0e27\u0e22 ngrok</p>
+              <p class="hint">ngrok \u0e40\u0e1b\u0e47\u0e19 Tunnel \u0e2b\u0e25\u0e31\u0e01 \u0e16\u0e49\u0e32\u0e40\u0e1b\u0e34\u0e14\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e08\u0e30\u0e2a\u0e33\u0e23\u0e2d\u0e07\u0e14\u0e49\u0e27\u0e22 Cloudflare</p>
               <div class="tunnel-settings">
                 <div class="row">
                   <div class="field">
@@ -2658,27 +2684,17 @@ function renderPage() {
                   <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
                 </div>
               </section>
-
               <section class="card">
-                <div class="title">ข้อมูลระบบ</div>
-                <div class="info-grid">
-                  <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
-                  <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
-                  <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+                <div class="logs-head">
+                  <div class="title" style="margin:0">บันทึกการทำงาน</div>
+                  <div class="row">
+                    <button id="logFilter">${icon("filter")} ทั้งหมด</button>
+                    <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
+                  </div>
                 </div>
+                <pre id="logs"></pre>
               </section>
             </div>
-
-            <section class="card">
-              <div class="logs-head">
-                <div class="title" style="margin:0">บันทึกการทำงาน</div>
-                <div class="row">
-                  <button id="logFilter">${icon("filter")} ทั้งหมด</button>
-                  <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
-                </div>
-              </div>
-              <pre id="logs"></pre>
-            </section>
           </div>
         </div>
 
