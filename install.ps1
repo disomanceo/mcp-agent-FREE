@@ -126,6 +126,54 @@ function Find-Ngrok {
   $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 }
 
+function Find-Cloudflared {
+  $candidates = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\cloudflared.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\cloudflared\cloudflared.exe"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\cloudflared.exe"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\cloudflared-windows-amd64.exe"),
+    (Join-Path $env:ProgramFiles "cloudflared\cloudflared.exe"),
+    (Join-Path $env:ProgramFiles "Cloudflare\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "cloudflared\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Cloudflare\cloudflared.exe")
+  )
+
+  $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
+  if ($command) {
+    $candidates += $command.Source
+  }
+
+  foreach ($entry in ($env:PATH -split [IO.Path]::PathSeparator)) {
+    if ($entry) {
+      $candidates += (Join-Path $entry "cloudflared.exe")
+    }
+  }
+
+  $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+
+function Install-Cloudflared {
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+    return $cloudflared
+  }
+
+  $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Write-Warning "cloudflared not found and winget is unavailable. Install cloudflared manually from https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/"
+    return $null
+  }
+
+  winget install --id Cloudflare.cloudflared -e --accept-package-agreements --accept-source-agreements
+  Refresh-ProcessPath
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+  }
+  return $cloudflared
+}
+
 function Install-Ngrok {
   $ngrok = Find-Ngrok
   if ($ngrok) {
@@ -221,6 +269,10 @@ Invoke-Step "Creating local configuration" {
   } finally {
     Pop-Location
   }
+}
+
+Invoke-Step "Installing/checking cloudflared" {
+  Install-Cloudflared | Out-Null
 }
 
 if (-not $SkipNgrok) {

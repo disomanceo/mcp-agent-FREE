@@ -12,6 +12,9 @@ const app = express();
 const guiPort = Number(process.env.GUI_PORT ?? 8790);
 const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
+const tunnelProvider = (process.env.TUNNEL_PROVIDER ?? "cloudflare").toLowerCase();
+const tunnelFallback = (process.env.TUNNEL_FALLBACK ?? "ngrok").toLowerCase();
+const cloudflareTunnelMode = (process.env.CLOUDFLARE_TUNNEL_MODE ?? "quick").toLowerCase();
 const children = [];
 const devServers = new Map();
 const logs = [];
@@ -41,6 +44,9 @@ app.get("/api/status", async (_req, res) => {
     workspaceRoot: process.env.WORKSPACE_ROOT ?? "",
     defaultProject: process.env.DEFAULT_PROJECT ?? "",
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
+    tunnelProvider,
+    tunnelFallback,
+    cloudflareTunnelMode,
     version: appVersion,
     logs: combinedLogs(),
   });
@@ -286,17 +292,82 @@ async function startAll() {
     () => childExitError(agent, "Desktop Agent"),
   );
 
+  const publicUrl = await startTunnel();
+
+  state.phase = "ready";
+  state.mcpUrl = `${publicUrl}/mcp`;
+  log("launcher", `READY: ${state.mcpUrl}`);
+}
+
+async function startTunnel() {
+  const providers = tunnelProvider === "ngrok" ? ["ngrok"] : ["cloudflare"];
+  if (tunnelFallback && !providers.includes(tunnelFallback)) {
+    providers.push(tunnelFallback);
+  }
+
+  const errors = [];
+  for (const provider of providers) {
+    try {
+      if (provider === "cloudflare") {
+        return await startCloudflareTunnel();
+      }
+      if (provider === "ngrok") {
+        return await startNgrokTunnel();
+      }
+      errors.push(`${provider}: unsupported tunnel provider`);
+    } catch (error) {
+      const message = messageOf(error);
+      errors.push(`${provider}: ${message}`);
+      log("launcher", `${provider} tunnel failed: ${message}`);
+    }
+  }
+
+  throw new Error(`No tunnel provider could start. ${errors.join(" | ")}`);
+}
+
+async function startCloudflareTunnel() {
+  const cloudflaredPath = findCloudflared();
+  if (!cloudflaredPath) {
+    throw new Error("cloudflared.exe not found. Install cloudflared first, then retry.");
+  }
+
+  const configuredUrl = (process.env.CLOUDFLARE_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+  if (cloudflareTunnelMode === "named") {
+    const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN ?? "").trim();
+    if (!token) {
+      throw new Error("CLOUDFLARE_TUNNEL_TOKEN is missing for named Cloudflare tunnel.");
+    }
+    startChild("cloudflare", cloudflaredPath, ["tunnel", "run", "--token", token]);
+    if (!configuredUrl) {
+      throw new Error("CLOUDFLARE_PUBLIC_URL is required for named Cloudflare tunnel mode.");
+    }
+    await delay(1200);
+    return configuredUrl;
+  }
+
+  const cloudflare = startChild("cloudflare", cloudflaredPath, [
+    "tunnel",
+    "--url",
+    `http://127.0.0.1:${gatewayPort}`,
+  ]);
+  try {
+    return await waitForCloudflareUrl(cloudflare, () =>
+      childExitError(cloudflare, "Cloudflare tunnel"),
+    );
+  } catch (error) {
+    killProcessTree(cloudflare.pid);
+    removeChild(cloudflare);
+    throw error;
+  }
+}
+
+async function startNgrokTunnel() {
   const ngrokPath = findNgrok();
   if (!ngrokPath) {
     throw new Error("ngrok.exe not found. Install ngrok first, then retry.");
   }
   const ngrok = startChild("ngrok", ngrokPath, ["http", gatewayPort]);
-
-  const publicUrl = await waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
-
-  state.phase = "ready";
-  state.mcpUrl = `${publicUrl}/mcp`;
-  log("launcher", `READY: ${state.mcpUrl}`);
+  return waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
 }
 
 function ensureWorkspaceDependencies() {
@@ -338,15 +409,20 @@ function startChild(label, command, args) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.lastOutput = "";
+  child.outputBuffer = "";
   child.exitCodeSeen = null;
   children.push(child);
   child.stdout.on("data", (chunk) => {
-    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
-    log(label, chunk.toString().trimEnd());
+    const text = chunk.toString().trimEnd();
+    child.lastOutput = text || child.lastOutput;
+    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-20_000);
+    log(label, text);
   });
   child.stderr.on("data", (chunk) => {
-    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
-    log(label, chunk.toString().trimEnd());
+    const text = chunk.toString().trimEnd();
+    child.lastOutput = text || child.lastOutput;
+    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-20_000);
+    log(label, text);
   });
   child.on("exit", (code) => {
     child.exitCodeSeen = code ?? 0;
@@ -366,6 +442,13 @@ function cleanup() {
   }
   devServers.clear();
   cleanupOrphanProcesses();
+}
+
+function removeChild(child) {
+  const index = children.indexOf(child);
+  if (index >= 0) {
+    children.splice(index, 1);
+  }
 }
 
 function killProcessTree(pid) {
@@ -429,6 +512,19 @@ async function waitForNgrokUrl(exitError) {
   throw new Error("ngrok did not expose a public HTTPS URL.");
 }
 
+async function waitForCloudflareUrl(child, exitError) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    const match = child.outputBuffer?.match(/https:\/\/[a-zA-Z0-9.-]+\.trycloudflare\.com/i);
+    if (match?.[0]) {
+      return match[0].replace(/\/$/, "");
+    }
+    const failure = exitError?.();
+    if (failure) throw failure;
+    await delay(500);
+  }
+  throw new Error("Cloudflare did not expose a public HTTPS URL.");
+}
+
 async function waitUntil(check, errorMessage, exitError) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const failure = exitError?.();
@@ -473,7 +569,12 @@ Get-CimInstance Win32_Process | Where-Object {
   )
   $isPersonalRoot = $cmd -like "*$root*" -and $isPersonalNode
   $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$gatewayPort*"
-  return $ownsAppPort -or $isPersonalRoot -or $isNgrok
+  $isCloudflared = $cmd -like "*cloudflared*" -and $cmd -like "*tunnel*" -and (
+    $cmd -like "*127.0.0.1:$gatewayPort*" -or
+    $cmd -like "*localhost:$gatewayPort*" -or
+    $cmd -like "*--token*"
+  )
+  return $ownsAppPort -or $isPersonalRoot -or $isNgrok -or $isCloudflared
 } | ForEach-Object {
   taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
@@ -1335,6 +1436,25 @@ function findNgrok() {
 
   for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
     candidates.push(path.join(entry, "ngrok.exe"));
+  }
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function findCloudflared() {
+  const candidates = [
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "cloudflared.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Programs", "cloudflared", "cloudflared.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages", "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe", "cloudflared.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages", "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe", "cloudflared-windows-amd64.exe"),
+    path.join(process.env.ProgramFiles ?? "", "cloudflared", "cloudflared.exe"),
+    path.join(process.env.ProgramFiles ?? "", "Cloudflare", "cloudflared.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "", "cloudflared", "cloudflared.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "", "Cloudflare", "cloudflared.exe"),
+  ];
+
+  for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
+    candidates.push(path.join(entry, "cloudflared.exe"));
   }
 
   return candidates.find((candidate) => fs.existsSync(candidate));
@@ -2254,6 +2374,8 @@ function renderPage() {
               <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace Root</strong><span id="settingsWorkspace"></span></div>
               <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="settingsProject"></span></div>
               <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Permission Mode</strong><span id="settingsMode"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("rocket")}</div><strong>Tunnel Provider</strong><span id="settingsTunnel"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("shield")}</div><strong>Cloudflare Mode</strong><span id="settingsCloudflareMode"></span></div>
               <div class="info-card"><div class="info-icon">${icon("monitor")}</div><strong>GUI Port</strong><span>${guiPort}</span></div>
               <div class="info-card"><div class="info-icon">${icon("refresh")}</div><strong>Gateway Port</strong><span>${gatewayPort}</span></div>
             </div>
@@ -2312,6 +2434,8 @@ function renderPage() {
         settingsWorkspace: document.querySelector("#settingsWorkspace"),
         settingsProject: document.querySelector("#settingsProject"),
         settingsMode: document.querySelector("#settingsMode"),
+        settingsTunnel: document.querySelector("#settingsTunnel"),
+        settingsCloudflareMode: document.querySelector("#settingsCloudflareMode"),
       };
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
@@ -2593,6 +2717,8 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
+        els.settingsTunnel.textContent = data.tunnelProvider || "-";
+        els.settingsCloudflareMode.textContent = data.cloudflareTunnelMode || "-";
         const logHtml = data.logs.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
