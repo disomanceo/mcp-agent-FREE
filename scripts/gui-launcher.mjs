@@ -13,6 +13,7 @@ const guiPort = Number(process.env.GUI_PORT ?? 8790);
 const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
 const children = [];
+const devServers = new Map();
 const logs = [];
 const projectEvents = [];
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
@@ -112,6 +113,15 @@ app.post("/api/projects/delete", (req, res) => {
   }
 });
 
+app.post("/api/projects/browse-folder", (_req, res) => {
+  try {
+    const folder = browseLocalFolder();
+    res.json({ ok: true, folder });
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
 app.post("/api/start", async (_req, res) => {
   try {
     await startAll();
@@ -150,6 +160,28 @@ app.post("/api/git/dev-test", async (req, res) => {
   try {
     const result = await runDevTest(String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""));
     res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/git/dev-stop", (req, res) => {
+  try {
+    const result = stopDevServer(String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""));
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/open-url", (req, res) => {
+  try {
+    const url = String(req.body?.url ?? "");
+    if (!/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(url)) {
+      throw new Error("Only local dev URLs can be opened from here.");
+    }
+    openBrowser(url);
+    res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: messageOf(error) });
   }
@@ -298,6 +330,10 @@ function cleanup() {
   for (const child of children.splice(0).reverse()) {
     child.kill();
   }
+  for (const entry of devServers.values()) {
+    entry.child.kill();
+  }
+  devServers.clear();
   cleanupOrphanProcesses();
 }
 
@@ -605,6 +641,10 @@ async function runDevTest(project) {
   if (!packageJson?.scripts?.dev) {
     throw new Error("This project does not have npm script: dev.");
   }
+  const existing = devServers.get(project);
+  if (existing && existing.child.exitCode === null) {
+    return { ok: true, url: existing.url, output: existing.output, alreadyRunning: true };
+  }
 
   log("test", `Starting npm run dev test for ${project}...`);
   const child = spawn(npmRunnerCommand(), npmRunnerArgs(["run", "dev"]), {
@@ -621,6 +661,10 @@ async function runDevTest(project) {
   child.stderr.on("data", append);
 
   const result = await waitForDevServer(child, () => output);
+  devServers.set(project, { child, url: result.url, output: result.output });
+  child.on("exit", () => {
+    if (devServers.get(project)?.child === child) devServers.delete(project);
+  });
   markProjectEvent(project, "test", "Local dev test passed");
   log("test", `Local dev test passed for ${project}`);
   return result;
@@ -633,14 +677,34 @@ async function waitForDevServer(child, output) {
     if (child.exitCode !== null) {
       throw new Error(`npm run dev exited early.\n${output().trim()}`);
     }
-    if (readyPattern.test(output())) {
-      child.kill();
-      return { ok: true, output: output().trim() };
+    const currentOutput = output();
+    const url = extractLocalUrl(currentOutput);
+    if (readyPattern.test(currentOutput) || url) {
+      return { ok: true, url: url || "", output: currentOutput.trim() };
     }
     await delay(400);
   }
-  child.kill();
-  return { ok: true, output: output().trim() || "Dev server stayed running for 15 seconds." };
+  const currentOutput = output();
+  return {
+    ok: true,
+    url: extractLocalUrl(currentOutput),
+    output: currentOutput.trim() || "Dev server stayed running for 15 seconds.",
+  };
+}
+
+function extractLocalUrl(output) {
+  const matches = String(output).match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/[^\s]*)?/gi);
+  const url = matches?.find(Boolean) ?? "";
+  return url.replace("0.0.0.0", "localhost");
+}
+
+function stopDevServer(project) {
+  const server = devServers.get(project);
+  if (!server) return { ok: true, stopped: false };
+  server.child.kill();
+  devServers.delete(project);
+  log("test", `Stopped local dev server for ${project}`);
+  return { ok: true, stopped: true };
 }
 
 function gitPushFromGui(project) {
@@ -960,6 +1024,31 @@ function addProjectFromLocal(rawPath) {
   log("launcher", `${copied ? "Imported" : "Linked"} local project: ${project.name}`);
   markProjectEvent(project.name, "local", copied ? "Imported local folder" : "Added local folder");
   return { ok: true, project: project.name, kind: "local", copied, path: targetPath };
+}
+
+function browseLocalFolder() {
+  if (process.platform !== "win32") {
+    throw new Error("Folder picker is currently available on Windows only.");
+  }
+  const script = `
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Select a project folder'
+$dialog.ShowNewFolderButton = $false
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $dialog.SelectedPath
+}
+`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-Sta", "-Command", script], {
+    encoding: "utf8",
+    windowsHide: false,
+    timeout: 120_000,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || "Folder picker failed.");
+  }
+  return result.stdout.trim();
 }
 
 function isSkippedLocalImportPath(source, root) {
@@ -1979,6 +2068,7 @@ function renderPage() {
                   <label class="title" for="localProjectPath" style="margin:10px 0 0">\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e42\u0e1b\u0e23\u0e40\u0e08\u0e01\u0e15\u0e4c\u0e08\u0e32\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e43\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07</label>
                   <div class="row">
                     <input id="localProjectPath" placeholder="D:\\Projects\\my-app" />
+                    <button id="browseLocalProject">${icon("folder")} \u0e40\u0e25\u0e37\u0e2d\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c</button>
                     <button id="addLocalProject">${icon("folder")} \u0e40\u0e1e\u0e34\u0e48\u0e21 Local</button>
                   </div>
                   <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
@@ -2057,6 +2147,9 @@ function renderPage() {
             <div class="column">
               <div class="row">
                 <button id="gitDevTest">${icon("play")} \u0e17\u0e14\u0e2a\u0e2d\u0e1a Local: npm run dev</button>
+                <button id="openDevUrl" disabled>${icon("rocket")} \u0e40\u0e1b\u0e34\u0e14 Browser</button>
+                <button id="copyDevUrl" disabled>${icon("copy")} Copy URL</button>
+                <button id="stopDevServer" disabled>${icon("square")} \u0e2b\u0e22\u0e38\u0e14 Local</button>
               </div>
               <label class="title" for="commitMessage" style="margin:0">Commit message</label>
               <input id="commitMessage" placeholder="เช่น fix: update payment tracker UI" />
@@ -2117,6 +2210,7 @@ function renderPage() {
         projectUrl: document.querySelector("#projectUrl"),
         addProjectUrl: document.querySelector("#addProjectUrl"),
         localProjectPath: document.querySelector("#localProjectPath"),
+        browseLocalProject: document.querySelector("#browseLocalProject"),
         addLocalProject: document.querySelector("#addLocalProject"),
         setProject: document.querySelector("#setProject"),
         workspace: document.querySelector("#workspace"),
@@ -2134,6 +2228,9 @@ function renderPage() {
         gitFiles: document.querySelector("#gitFiles"),
         gitSummary: document.querySelector("#gitSummary"),
         gitDevTest: document.querySelector("#gitDevTest"),
+        openDevUrl: document.querySelector("#openDevUrl"),
+        copyDevUrl: document.querySelector("#copyDevUrl"),
+        stopDevServer: document.querySelector("#stopDevServer"),
         commitMessage: document.querySelector("#commitMessage"),
         gitCommit: document.querySelector("#gitCommit"),
         gitPush: document.querySelector("#gitPush"),
@@ -2148,6 +2245,7 @@ function renderPage() {
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
       document.documentElement.dataset.theme = savedTheme;
+      let latestDevUrl = "";
 
       els.start.addEventListener("click", () => post("/api/start"));
       els.stop.addEventListener("click", () => post("/api/stop"));
@@ -2183,6 +2281,12 @@ function renderPage() {
         els.projectUrl.value = "";
         await refreshAll();
       });
+      els.browseLocalProject.addEventListener("click", async () => {
+        const response = await post("/api/projects/browse-folder");
+        if (response?.folder) {
+          els.localProjectPath.value = response.folder;
+        }
+      });
       els.addLocalProject.addEventListener("click", async () => {
         await post("/api/projects/from-local", { path: els.localProjectPath.value });
         els.localProjectPath.value = "";
@@ -2195,7 +2299,11 @@ function renderPage() {
         els.setProject.classList.toggle("star-active", els.projects.value && els.projects.value === els.projects.dataset.defaultProject);
       });
       els.gitRefresh.addEventListener("click", refreshGitStatus);
-      els.gitProject.addEventListener("change", refreshGitStatus);
+      els.gitProject.addEventListener("change", () => {
+        setDevUrl("");
+        els.stopDevServer.disabled = true;
+        refreshGitStatus();
+      });
       els.gitSelectAll.addEventListener("click", () => {
         document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
           item.checked = true;
@@ -2207,10 +2315,32 @@ function renderPage() {
         try {
           const response = await post("/api/git/dev-test", { project: els.gitProject.value });
           if (response?.ok) {
-            els.gitOutput.textContent = "ทดสอบ local ผ่าน: npm run dev เริ่มทำงานได้\\n" + (response.output || "");
+            setDevUrl(response.url || "");
+            els.gitOutput.textContent = "ทดสอบ local ผ่าน: npm run dev เริ่มทำงานได้"
+              + (response.url ? "\\nURL: " + response.url : "\\nยังไม่พบ URL ใน output แต่ server เริ่มทำงานแล้ว")
+              + "\\n" + (response.output || "");
           }
         } finally {
           els.gitDevTest.disabled = false;
+        }
+      });
+      els.openDevUrl.addEventListener("click", async () => {
+        if (!latestDevUrl) return;
+        await post("/api/open-url", { url: latestDevUrl });
+      });
+      els.copyDevUrl.addEventListener("click", async () => {
+        if (!latestDevUrl) return;
+        await navigator.clipboard.writeText(latestDevUrl);
+        els.copyDevUrl.textContent = "✓ Copied";
+        setTimeout(() => {
+          els.copyDevUrl.textContent = "Copy URL";
+        }, 1400);
+      });
+      els.stopDevServer.addEventListener("click", async () => {
+        const response = await post("/api/git/dev-stop", { project: els.gitProject.value });
+        if (response?.ok) {
+          setDevUrl("");
+          els.gitOutput.textContent = response.stopped ? "หยุด local dev server แล้ว" : "ไม่มี local dev server ที่เปิดอยู่";
         }
       });
       els.gitCommit.addEventListener("click", async () => {
@@ -2267,6 +2397,13 @@ function renderPage() {
       function showView(name) {
         els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === name));
         els.views.forEach((view) => view.classList.toggle("active-view", view.id === "view-" + name));
+      }
+
+      function setDevUrl(url) {
+        latestDevUrl = url || "";
+        els.openDevUrl.disabled = !latestDevUrl;
+        els.copyDevUrl.disabled = !latestDevUrl;
+        els.stopDevServer.disabled = false;
       }
 
       async function post(url, body) {
