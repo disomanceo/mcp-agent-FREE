@@ -2519,9 +2519,9 @@ function renderPage() {
         min-height: 100%;
       }
       .log-card #logs {
-        flex: 1;
-        height: auto;
-        min-height: 420px;
+        flex: 0 0 auto;
+        height: 380px;
+        min-height: 0;
       }
       .log-line.complete {
         color: #86efac;
