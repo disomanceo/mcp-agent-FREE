@@ -2318,19 +2318,51 @@ function renderPage() {
       document.documentElement.dataset.theme = savedTheme;
       let latestDevUrl = "";
 
-      els.start.addEventListener("click", () => post("/api/start"));
-      els.stop.addEventListener("click", () => post("/api/stop"));
-      els.refresh.addEventListener("click", refreshAll);
-      els.settingsTop.addEventListener("click", () => showView("settings"));
-      els.navItems.forEach((item) => {
-        item.addEventListener("click", () => showView(item.dataset.view));
+      function reportClientError(error) {
+        const message = error?.message || String(error || "Unknown UI error");
+        console.error(error);
+        const line = new Date().toLocaleTimeString() + "  ERROR  [ui] " + message;
+        [els.logs, els.logsFull, els.gitOutput].filter(Boolean).forEach((target) => {
+          target.textContent = line + "\\n" + (target.textContent || "");
+        });
+        if (els.status) {
+          els.status.textContent = "มีข้อผิดพลาด";
+          els.status.className = "status error";
+        }
+      }
+
+      function bind(element, event, handler) {
+        if (!element) return;
+        element.addEventListener(event, async (...args) => {
+          try {
+            await handler(...args);
+          } catch (error) {
+            reportClientError(error);
+          }
+        });
+      }
+
+      function bindAll(elements, event, handler) {
+        Array.from(elements || []).forEach((element) => bind(element, event, handler));
+      }
+
+      window.addEventListener("error", (event) => reportClientError(event.error || event.message));
+      window.addEventListener("unhandledrejection", (event) => reportClientError(event.reason));
+
+      bindAll(els.navItems, "click", (event) => {
+        const view = event.currentTarget?.dataset?.view;
+        if (view) showView(view);
       });
-      els.themeToggle.addEventListener("click", () => {
+      bind(els.settingsTop, "click", () => showView("settings"));
+      bind(els.start, "click", () => post("/api/start"));
+      bind(els.stop, "click", () => post("/api/stop"));
+      bind(els.refresh, "click", refreshAll);
+      bind(els.themeToggle, "click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = next;
         localStorage.setItem("pma-theme", next);
       });
-      els.copy.addEventListener("click", async () => {
+      bind(els.copy, "click", async () => {
         const text = els.url.textContent.trim();
         if (!text.startsWith("https://")) return;
         await navigator.clipboard.writeText(text);
@@ -2343,44 +2375,44 @@ function renderPage() {
           els.copy.querySelector("svg").outerHTML = '${icon("copy").replaceAll("'", "\\'")}';
         }, 1600);
       });
-      els.setProject.addEventListener("click", async () => {
+      bind(els.setProject, "click", async () => {
         await post("/api/projects/default", { project: els.projects.value });
         await refreshAll();
       });
-      els.addProjectUrl.addEventListener("click", async () => {
+      bind(els.addProjectUrl, "click", async () => {
         await post("/api/projects/from-url", { url: els.projectUrl.value });
         els.projectUrl.value = "";
         await refreshAll();
       });
-      els.browseLocalProject.addEventListener("click", async () => {
+      bind(els.browseLocalProject, "click", async () => {
         const response = await post("/api/projects/browse-folder");
         if (response?.folder) {
           els.localProjectPath.value = response.folder;
         }
       });
-      els.addLocalProject.addEventListener("click", async () => {
+      bind(els.addLocalProject, "click", async () => {
         await post("/api/projects/from-local", { path: els.localProjectPath.value });
         els.localProjectPath.value = "";
         await refreshAll();
       });
-      els.clearLogs.addEventListener("click", () => post("/api/logs/clear"));
-      els.clearLogsFull.addEventListener("click", () => post("/api/logs/clear"));
-      els.refreshProjects.addEventListener("click", refreshAll);
-      els.projects.addEventListener("change", () => {
+      bind(els.clearLogs, "click", () => post("/api/logs/clear"));
+      bind(els.clearLogsFull, "click", () => post("/api/logs/clear"));
+      bind(els.refreshProjects, "click", refreshAll);
+      bind(els.projects, "change", () => {
         els.setProject.classList.toggle("star-active", els.projects.value && els.projects.value === els.projects.dataset.defaultProject);
       });
-      els.gitRefresh.addEventListener("click", refreshGitStatus);
-      els.gitProject.addEventListener("change", () => {
+      bind(els.gitRefresh, "click", refreshGitStatus);
+      bind(els.gitProject, "change", () => {
         setDevUrl("");
         els.stopDevServer.disabled = true;
         refreshGitStatus();
       });
-      els.gitSelectAll.addEventListener("click", () => {
+      bind(els.gitSelectAll, "click", () => {
         document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
           item.checked = true;
         });
       });
-      els.gitDevTest.addEventListener("click", async () => {
+      bind(els.gitDevTest, "click", async () => {
         els.gitDevTest.disabled = true;
         els.gitOutput.textContent = "กำลังทดสอบ local ด้วย npm run dev...";
         try {
@@ -2395,11 +2427,11 @@ function renderPage() {
           els.gitDevTest.disabled = false;
         }
       });
-      els.openDevUrl.addEventListener("click", async () => {
+      bind(els.openDevUrl, "click", async () => {
         if (!latestDevUrl) return;
         await post("/api/open-url", { url: latestDevUrl });
       });
-      els.copyDevUrl.addEventListener("click", async () => {
+      bind(els.copyDevUrl, "click", async () => {
         if (!latestDevUrl) return;
         await navigator.clipboard.writeText(latestDevUrl);
         els.copyDevUrl.textContent = "✓ Copied";
@@ -2407,14 +2439,14 @@ function renderPage() {
           els.copyDevUrl.textContent = "Copy URL";
         }, 1400);
       });
-      els.stopDevServer.addEventListener("click", async () => {
+      bind(els.stopDevServer, "click", async () => {
         const response = await post("/api/git/dev-stop", { project: els.gitProject.value });
         if (response?.ok) {
           setDevUrl("");
           els.gitOutput.textContent = response.stopped ? "หยุด local dev server แล้ว" : "ไม่มี local dev server ที่เปิดอยู่";
         }
       });
-      els.gitCommit.addEventListener("click", async () => {
+      bind(els.gitCommit, "click", async () => {
         const files = Array.from(document.querySelectorAll(".git-file-check:checked")).map((item) => item.value);
         const response = await post("/api/git/commit", {
           project: els.gitProject.value,
@@ -2426,7 +2458,7 @@ function renderPage() {
           await refreshGitStatus();
         }
       });
-      els.gitPush.addEventListener("click", async () => {
+      bind(els.gitPush, "click", async () => {
         if (!confirm("ยืนยัน Push ขึ้น GitHub? ควร commit ให้เรียบร้อยและตรวจ branch ก่อน")) return;
         const response = await post("/api/git/push", { project: els.gitProject.value });
         if (response?.ok) {
@@ -2434,7 +2466,7 @@ function renderPage() {
           await refreshGitStatus();
         }
       });
-      els.deployVercel.addEventListener("click", async () => {
+      bind(els.deployVercel, "click", async () => {
         if (!confirm("ยืนยัน Deploy Vercel production? ควร commit/push ให้เรียบร้อยก่อน")) return;
         els.deployVercel.disabled = true;
         els.gitOutput.textContent = "กำลัง deploy Vercel...";
@@ -2449,7 +2481,7 @@ function renderPage() {
           els.deployVercel.disabled = false;
         }
       });
-      els.deployGas.addEventListener("click", async () => {
+      bind(els.deployGas, "click", async () => {
         if (!confirm("ยืนยัน Deploy Google Apps Script ด้วย clasp?")) return;
         els.deployGas.disabled = true;
         els.gitOutput.textContent = "กำลัง deploy GAS...";
@@ -2485,12 +2517,20 @@ function renderPage() {
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          alert(data.error || "Request failed");
-          return null;
+          throw new Error(data.error || "Request failed");
         }
         const data = await response.json().catch(() => ({ ok: true }));
         await refreshAll();
         return data;
+      }
+
+      async function getJson(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "โหลดข้อมูลไม่สำเร็จ: " + url);
+        }
+        return response.json();
       }
 
       async function refreshGitStatus() {
@@ -2498,14 +2538,14 @@ function renderPage() {
           els.gitFiles.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ให้เลือก</div>';
           return;
         }
-        const response = await fetch("/api/git/status?project=" + encodeURIComponent(els.gitProject.value));
-        const data = await response.json();
-        if (!response.ok) {
-          els.gitSummary.textContent = data.error || "อ่านสถานะ git ไม่ได้";
+        try {
+          const data = await getJson("/api/git/status?project=" + encodeURIComponent(els.gitProject.value));
+          renderGitStatus(data);
+        } catch (error) {
+          els.gitSummary.textContent = error.message || "อ่านสถานะ git ไม่ได้";
           els.gitFiles.innerHTML = "";
-          return;
+          reportClientError(error);
         }
-        renderGitStatus(data);
       }
 
       function renderGitStatus(data) {
@@ -2566,17 +2606,22 @@ function renderPage() {
       }
 
       async function refreshAll() {
-        const [status, projects, details] = await Promise.all([
-          fetch("/api/status").then((r) => r.json()),
-          fetch("/api/projects").then((r) => r.json()),
-          fetch("/api/projects/details").then((r) => r.json()),
-        ]);
-        renderStatus(status);
-        renderProjects(projects);
-        renderProjectDetails(details);
+        try {
+          const [status, projects, details] = await Promise.all([
+            getJson("/api/status"),
+            getJson("/api/projects"),
+            getJson("/api/projects/details"),
+          ]);
+          renderStatus(status);
+          renderProjects(projects);
+          renderProjectDetails(details);
+        } catch (error) {
+          reportClientError(error);
+        }
       }
 
       function renderStatus(data) {
+        data = data || {};
         const label = data.phase === "ready" ? "Ready" : data.phase === "starting" ? "Starting" : data.phase === "error" ? "Error" : "Stopped";
         els.status.textContent = data.phase === "ready" ? "เชื่อมต่อแล้ว" : data.phase === "starting" ? "กำลังเริ่ม" : data.phase === "error" ? "มีข้อผิดพลาด" : "ยังไม่เชื่อมต่อ";
         els.status.className = "status " + (data.phase === "ready" ? "ready" : data.phase === "error" ? "error" : "");
@@ -2593,7 +2638,8 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
-        const logHtml = data.logs.map((item) => {
+        const logItems = Array.isArray(data.logs) ? data.logs : [];
+        const logHtml = logItems.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
           return '<span class="' + lineClass + '">●  ' + escapeHtml(item.time) + '  ' + level + '</span>    [' + escapeHtml(item.label) + '] ' + renderLogText(item.text);
@@ -2605,29 +2651,35 @@ function renderPage() {
       }
 
       function renderProjects(data) {
+        data = data || {};
+        const projectNames = Array.isArray(data.projects) ? data.projects : [];
         const selected = els.projects.value || data.defaultProject;
         els.projects.dataset.defaultProject = data.defaultProject || "";
         els.projects.innerHTML = "";
-        for (const project of data.projects || []) {
+        for (const project of projectNames) {
           const option = document.createElement("option");
           option.value = project;
           option.textContent = project === data.defaultProject ? project + " (active)" : project;
           option.selected = project === selected;
           els.projects.append(option);
         }
+        const hasProjects = projectNames.length > 0;
+        els.setProject.disabled = !hasProjects;
         els.setProject.classList.toggle("star-active", selected && selected === data.defaultProject);
         const gitSelected = els.gitProject.value || data.defaultProject;
         els.gitProject.innerHTML = "";
-        for (const project of data.projects || []) {
+        for (const project of projectNames) {
           const option = document.createElement("option");
           option.value = project;
           option.textContent = project === data.defaultProject ? project + " (active)" : project;
           option.selected = project === gitSelected;
           els.gitProject.append(option);
         }
+        els.gitRefresh.disabled = !hasProjects;
       }
 
       function renderProjectDetails(data) {
+        data = data || {};
         const projects = data.projects || [];
         if (projects.length === 0) {
           els.projectDetails.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ใน workspace</div>';
@@ -2670,13 +2722,13 @@ function renderPage() {
             + '</div>';
         }).join("");
         document.querySelectorAll(".set-project-inline").forEach((button) => {
-          button.addEventListener("click", async () => {
+          bind(button, "click", async () => {
             await post("/api/projects/default", { project: button.dataset.project });
             await refreshAll();
           });
         });
         document.querySelectorAll(".delete-project").forEach((button) => {
-          button.addEventListener("click", async () => {
+          bind(button, "click", async () => {
             const project = button.dataset.project;
             const typed = prompt("การลบจะลบทั้ง UI และไฟล์ใน D:\\\\AI-Workspace\\\\ ให้พิมพ์ชื่อโปรเจกต์เพื่อยืนยัน:", project);
             if (typed !== project) return;
