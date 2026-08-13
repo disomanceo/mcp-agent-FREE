@@ -59,6 +59,18 @@ PersonalMCPAgent-Setup-x.x.x.exe
 
 Then double-click it and follow the installer. The setup creates the same Desktop shortcut named `Personal MCP Agent`.
 
+## Batch installer
+
+If Windows Smart App Control blocks the unsigned `.exe`, download the batch installer zip from GitHub Releases instead.
+
+Extract the zip and run:
+
+```text
+Install-Personal-MCP-Agent.cmd
+```
+
+The batch installer downloads and runs the official `install.ps1` from GitHub. It avoids the unsigned `.exe` path while still installing/checking Node.js, Git, ngrok, npm dependencies, local config, WORK mode, and the Desktop shortcut.
+
 Developers can build the setup file locally with:
 
 ```powershell
