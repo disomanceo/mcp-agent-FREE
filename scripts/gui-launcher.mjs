@@ -139,8 +139,7 @@ app.post("/api/stop", (_req, res) => {
   cleanup();
   state = { ...state, phase: "stopped", mcpUrl: "", startedAt: null };
   log("launcher", "Stopped Gateway, Agent, and ngrok.");
-  res.json({ ok: true, exiting: true });
-  setTimeout(shutdown, 250);
+  res.json({ ok: true, exiting: false });
 });
 
 app.post("/api/git/commit", (req, res) => {
@@ -360,13 +359,30 @@ function startChild(label, command, args) {
 
 function cleanup() {
   for (const child of children.splice(0).reverse()) {
-    child.kill();
+    killProcessTree(child.pid);
   }
   for (const entry of devServers.values()) {
-    entry.child.kill();
+    killProcessTree(entry.child.pid);
   }
   devServers.clear();
   cleanupOrphanProcesses();
+}
+
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10_000,
+    });
+    return;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // Process may have already exited.
+  }
 }
 
 function shutdown() {
@@ -436,18 +452,30 @@ function cleanupOrphanProcesses() {
 $root = '${root}'
 $current = ${process.pid}
 $gatewayPort = '${gatewayPort}'
+$ports = @([int]$gatewayPort, 4040)
+$owners = @()
+foreach ($port in $ports) {
+  $owners += Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess -ne 0 -and $_.OwningProcess -ne $current } |
+    Select-Object -ExpandProperty OwningProcess
+}
+$ownerSet = @{}
+foreach ($owner in $owners) { $ownerSet[[int]$owner] = $true }
 Get-CimInstance Win32_Process | Where-Object {
   $cmd = [string]$_.CommandLine
   if ($_.ProcessId -eq $current -or [string]::IsNullOrWhiteSpace($cmd)) { return $false }
-  $isPersonalNode = $cmd -like "*$root*" -and (
+  $ownsAppPort = $ownerSet.ContainsKey([int]$_.ProcessId)
+  $isPersonalNode = (
     $cmd -like "*scripts/gui-launcher.mjs*" -or
     $cmd -like "*apps/gateway/dist/index.js*" -or
-    $cmd -like "*apps/desktop-agent/dist/index.js*"
+    $cmd -like "*apps/desktop-agent/dist/index.js*" -or
+    $cmd -like "*npm-cli.js* run start:gui*"
   )
+  $isPersonalRoot = $cmd -like "*$root*" -and $isPersonalNode
   $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$gatewayPort*"
-  return $isPersonalNode -or $isNgrok
+  return $ownsAppPort -or $isPersonalRoot -or $isNgrok
 } | ForEach-Object {
-  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
 `;
   const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
