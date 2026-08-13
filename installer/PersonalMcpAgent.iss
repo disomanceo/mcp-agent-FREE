@@ -1,5 +1,5 @@
 #define MyAppName "Personal MCP Agent"
-#define MyAppVersion "0.16.3"
+#define MyAppVersion "0.16.4"
 #define MyAppPublisher "disomanceo"
 #define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
 #define MyAppExeName "Personal MCP Agent.cmd"
@@ -41,5 +41,5 @@ Name: "{group}\Thai Quick Start Guide"; Filename: "{app}\docs\QUICKSTART-TH.md"
 Name: "{group}\Update Personal MCP Agent"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\update.ps1"" -InstallDir ""{app}"""; WorkingDir: "{app}"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\post-install.ps1"" -InstallDir ""{app}"" -WorkspaceRoot ""D:\AI-Workspace"""; WorkingDir: "{app}"; Description: "Install dependencies and configure Personal MCP Agent"; Flags: postinstall waituntilterminated
-Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Start Personal MCP Agent"; Flags: nowait shellexec skipifsilent
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\post-install.ps1"" -InstallDir ""{app}"" -WorkspaceRoot ""D:\AI-Workspace"""; WorkingDir: "{app}"; StatusMsg: "Installing dependencies and configuring Personal MCP Agent..."; Flags: waituntilterminated
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Start Personal MCP Agent"; Flags: postinstall nowait shellexec skipifsilent
