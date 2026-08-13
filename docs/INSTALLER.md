@@ -26,16 +26,6 @@ The installer will:
 
 The automatic prerequisite installation uses `winget`. On Windows machines without `winget`, install Microsoft App Installer first, then rerun the setup.
 
-Default tunnel behavior:
-
-```env
-TUNNEL_PROVIDER=ngrok
-TUNNEL_FALLBACK=none
-TUNNEL_FALLBACK=ngrok
-```
-
-ngrok is the only supported tunnel provider in this installer. Configure an ngrok authtoken in the launcher before starting the agent.
-
 ngrok requires an account token before it can create a public URL. Get your token from:
 
 ```text

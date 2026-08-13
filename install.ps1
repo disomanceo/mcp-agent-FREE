@@ -223,7 +223,6 @@ Invoke-Step "Creating local configuration" {
   }
 }
 
-
 if (-not $SkipNgrok) {
   Invoke-Step "Installing/checking ngrok" {
     $ngrok = Install-Ngrok

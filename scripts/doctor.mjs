@@ -19,12 +19,6 @@ checks.push({
   detail: ngrokPath ?? "not found",
 });
 
-checks.push({
-  name: "Tunnel provider",
-  ok: (process.env.TUNNEL_PROVIDER ?? "ngrok").toLowerCase() === "ngrok",
-  detail: process.env.TUNNEL_PROVIDER ?? "ngrok",
-});
-
 const ngrokConfig = path.join(process.env.LOCALAPPDATA ?? "", "ngrok", "ngrok.yml");
 checks.push({
   name: "ngrok authtoken config",
@@ -112,4 +106,3 @@ function findNgrok() {
 
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
-

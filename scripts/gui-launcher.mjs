@@ -12,8 +12,6 @@ const app = express();
 const guiPort = Number(process.env.GUI_PORT ?? 8790);
 const gatewayPort = process.env.GATEWAY_PORT ?? "8787";
 const ngrokApi = "http://127.0.0.1:4040/api/tunnels";
-const tunnelProvider = "ngrok";
-const tunnelFallback = "";
 const children = [];
 const devServers = new Map();
 const logs = [];
@@ -43,10 +41,6 @@ app.get("/api/status", async (_req, res) => {
     workspaceRoot: process.env.WORKSPACE_ROOT ?? "",
     defaultProject: process.env.DEFAULT_PROJECT ?? "",
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
-    tunnelProvider,
-    tunnelFallback,
-    ngrokConfigured: hasNgrokConfig(),
-    ngrokDomain: process.env.NGROK_DOMAIN ?? "",
     version: appVersion,
     logs: combinedLogs(),
   });
@@ -201,32 +195,6 @@ app.post("/api/git/push", (req, res) => {
   }
 });
 
-app.post("/api/tunnel/config", (req, res) => {
-  try {
-    const result = saveTunnelConfig({
-      provider: String(req.body?.provider ?? ""),
-      fallback: String(req.body?.fallback ?? ""),
-      ngrokAuthtoken: String(req.body?.ngrokAuthtoken ?? ""),
-      ngrokDomain: String(req.body?.ngrokDomain ?? ""),
-    });
-    res.json(result);
-  } catch (error) {
-    res.status(400).json({ error: messageOf(error) });
-  }
-});
-
-app.post("/api/git/upstream", (req, res) => {
-  try {
-    const result = gitSetUpstreamFromGui({
-      project: String(req.body?.project ?? process.env.DEFAULT_PROJECT ?? ""),
-      remoteUrl: String(req.body?.remoteUrl ?? ""),
-    });
-    res.json(result);
-  } catch (error) {
-    res.status(400).json({ error: messageOf(error) });
-  }
-});
-
 app.post("/api/deploy/vercel", (req, res) => {
   try {
     const result = deployVercelFromGui(
@@ -318,30 +286,17 @@ async function startAll() {
     () => childExitError(agent, "Desktop Agent"),
   );
 
-  const publicUrl = await startTunnel();
-
-  state.phase = "ready";
-  state.mcpUrl = `${publicUrl}/mcp`;
-  log("launcher", `READY: ${state.mcpUrl}`);
-}
-
-async function startTunnel() {
-  return startNgrokTunnel();
-}
-
-async function startNgrokTunnel() {
   const ngrokPath = findNgrok();
   if (!ngrokPath) {
     throw new Error("ngrok.exe not found. Install ngrok first, then retry.");
   }
-  const ngrokArgs = ["http"];
-  const domain = (process.env.NGROK_DOMAIN ?? "").trim();
-  if (domain) {
-    ngrokArgs.push("--domain", domain);
-  }
-  ngrokArgs.push(gatewayPort);
-  const ngrok = startChild("ngrok", ngrokPath, ngrokArgs);
-  return waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
+  const ngrok = startChild("ngrok", ngrokPath, ["http", gatewayPort]);
+
+  const publicUrl = await waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
+
+  state.phase = "ready";
+  state.mcpUrl = `${publicUrl}/mcp`;
+  log("launcher", `READY: ${state.mcpUrl}`);
 }
 
 function ensureWorkspaceDependencies() {
@@ -383,20 +338,15 @@ function startChild(label, command, args) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.lastOutput = "";
-  child.outputBuffer = "";
   child.exitCodeSeen = null;
   children.push(child);
   child.stdout.on("data", (chunk) => {
-    const text = chunk.toString().trimEnd();
-    child.lastOutput = text || child.lastOutput;
-    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-20_000);
-    log(label, text);
+    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
+    log(label, chunk.toString().trimEnd());
   });
   child.stderr.on("data", (chunk) => {
-    const text = chunk.toString().trimEnd();
-    child.lastOutput = text || child.lastOutput;
-    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-20_000);
-    log(label, text);
+    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
+    log(label, chunk.toString().trimEnd());
   });
   child.on("exit", (code) => {
     child.exitCodeSeen = code ?? 0;
@@ -601,57 +551,8 @@ function projectDetails(workspaceRoot, name) {
     remote: remote.trim(),
     sourceUrl: metadata?.displayUrl ?? metadata?.sourceUrl ?? remote.trim(),
     docs,
-    health: projectHealth(projectPath, { isGit, gitStatus, remote, docs, packageJson }),
-    recentFiles: recentChangedFiles(projectPath),
     events: recentProjectEvents(name),
   };
-}
-
-function projectHealth(projectPath, { isGit, gitStatus, remote, docs, packageJson }) {
-  const checks = [
-    { key: "folder", label: "โฟลเดอร์พร้อม", ok: fs.existsSync(projectPath) },
-    { key: "git", label: "รู้จัก Git", ok: isGit },
-    { key: "readme", label: "มี README", ok: Boolean(docs.readme) },
-    { key: "todo", label: "มี TODO", ok: Boolean(docs.todo) },
-    { key: "package", label: "มี package.json", ok: Boolean(packageJson) },
-    { key: "remote", label: "เชื่อม GitHub/remote", ok: Boolean(remote.trim()) },
-  ];
-  const changedCount = isGit
-    ? gitStatus.split(/\r?\n/).filter((line) => line.trim()).length
-    : 0;
-  const warnings = [];
-  if (!isGit) warnings.push("ยังไม่ใช่ Git repo ให้กดเริ่ม Git ก่อน commit");
-  if (isGit && changedCount > 0) warnings.push(`มีไฟล์เปลี่ยนแปลง ${changedCount} ไฟล์ ควรตรวจสอบก่อน commit`);
-  if (isGit && !remote.trim()) warnings.push("ยังไม่มี remote ถ้าจะสำรองออนไลน์ให้เชื่อม GitHub");
-  if (!docs.readme) warnings.push("ยังไม่มี README อธิบายว่าโปรเจกต์นี้ทำอะไร");
-  if (!docs.todo) warnings.push("ยังไม่มี TODO สำหรับจดงานค้าง/แผนถัดไป");
-  return {
-    checks,
-    changedCount,
-    status: warnings.length === 0 ? "ready" : isGit ? "review" : "setup",
-    summary:
-      warnings.length === 0
-        ? "พร้อมใช้งานและติดตามด้วย Git แล้ว"
-        : warnings.slice(0, 2).join(" · "),
-  };
-}
-
-function recentChangedFiles(projectPath) {
-  try {
-    return fs
-      .readdirSync(projectPath, { withFileTypes: true })
-      .filter((entry) => entry.isFile())
-      .map((entry) => {
-        const filePath = path.join(projectPath, entry.name);
-        const stat = fs.statSync(filePath);
-        return { name: entry.name, mtimeMs: stat.mtimeMs, updatedAt: stat.mtime.toISOString() };
-      })
-      .sort((a, b) => b.mtimeMs - a.mtimeMs)
-      .slice(0, 5)
-      .map(({ name, updatedAt }) => ({ name, updatedAt }));
-  } catch {
-    return [];
-  }
 }
 
 function readJson(filePath) {
@@ -896,50 +797,6 @@ function gitPushFromGui(project) {
   log("git", `Pushed ${project} to ${upstream}`);
   markProjectEvent(project, "github", `Pushed to ${upstream}`);
   return { ok: true, upstream, output: `${push.stdout}\n${push.stderr}`.trim() };
-}
-
-function gitSetUpstreamFromGui({ project, remoteUrl }) {
-  const projectPath = requireGitProject(project);
-  const cleanedUrl = normalizeGitHubRemoteUrl(remoteUrl);
-  const branch = "main";
-  const existingRemote = gitSummary(projectPath, ["remote", "get-url", "origin"]).trim();
-  const remoteCommand = existingRemote ? ["remote", "set-url", "origin", cleanedUrl] : ["remote", "add", "origin", cleanedUrl];
-  runGit(projectPath, remoteCommand, existingRemote ? "git remote set-url origin failed" : "git remote add origin failed");
-  runGit(projectPath, ["branch", "-M", branch], "git branch -M main failed");
-  const dirty = gitSummary(projectPath, ["status", "--porcelain=v1"]).trim();
-  if (dirty) {
-    throw new Error("ยังมีไฟล์ที่ยังไม่ได้ commit ให้ commit ให้เรียบร้อยก่อนตั้ง upstream/push");
-  }
-  const push = runGit(projectPath, ["push", "-u", "origin", branch], "git push -u origin main failed", 120_000);
-  log("git", `Set upstream for ${project}: origin/${branch}`);
-  markProjectEvent(project, "github", `Upstream origin/${branch}`);
-  return { ok: true, upstream: `origin/${branch}`, remoteUrl: cleanedUrl, output: push };
-}
-
-function normalizeGitHubRemoteUrl(value) {
-  const url = String(value ?? "").trim();
-  if (!url) throw new Error("ใส่ GitHub repository URL ก่อน");
-  if (/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(?:\.git)?$/i.test(url)) {
-    return url.endsWith(".git") ? url : `${url}.git`;
-  }
-  if (/^git@github\.com:[\w.-]+\/[\w.-]+(?:\.git)?$/i.test(url)) {
-    return url.endsWith(".git") ? url : `${url}.git`;
-  }
-  throw new Error("URL ต้องเป็น GitHub repo เช่น https://github.com/username/repo.git");
-}
-
-function runGit(cwd, args, errorMessage, timeout = 60_000) {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    windowsHide: true,
-    timeout,
-  });
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
-  if (result.status !== 0) {
-    throw new Error(output || errorMessage);
-  }
-  return output;
 }
 
 function deployVercelFromGui(project) {
@@ -1232,60 +1089,6 @@ function addProjectFromLocal(rawPath) {
   return { ok: true, project: project.name, kind: "local", copied, path: targetPath };
 }
 
-function saveTunnelConfig({ ngrokAuthtoken, ngrokDomain }) {
-  const cleanedNgrokDomain = ngrokDomain.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
-
-  if (cleanedNgrokDomain && !/^[a-z0-9.-]+$/i.test(cleanedNgrokDomain)) {
-    throw new Error("ngrok domain \u0e15\u0e49\u0e2d\u0e07\u0e40\u0e1b\u0e47\u0e19 hostname \u0e40\u0e0a\u0e48\u0e19 abc123.ngrok-free.dev");
-  }
-
-  const updates = {
-    TUNNEL_PROVIDER: "ngrok",
-    TUNNEL_FALLBACK: "none",
-    NGROK_DOMAIN: cleanedNgrokDomain,
-  };
-  if (ngrokAuthtoken.trim()) updates.NGROK_AUTHTOKEN = ngrokAuthtoken.trim();
-
-  for (const [key, value] of Object.entries(updates)) {
-    upsertEnvValue(key, value);
-    process.env[key] = value;
-  }
-
-  if (ngrokAuthtoken.trim()) {
-    configureNgrokAuthtoken(ngrokAuthtoken.trim());
-  }
-
-  log("launcher", "Tunnel config saved: provider=ngrok, fallback=none");
-  return { ok: true, tunnelProvider, tunnelFallback, ngrokConfigured: hasNgrokConfig(), ngrokDomain: process.env.NGROK_DOMAIN ?? "" };
-}
-
-
-function configureNgrokAuthtoken(token) {
-  const ngrokPath = findNgrok();
-  if (!ngrokPath) {
-    throw new Error("บันทึก token แล้ว แต่ยังไม่พบ ngrok.exe ให้ติดตั้ง ngrok ก่อน");
-  }
-  const result = spawnSync(ngrokPath, ["config", "add-authtoken", token], {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 30_000,
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "ตั้งค่า ngrok authtoken ไม่สำเร็จ");
-  }
-}
-
-function hasNgrokConfig() {
-  if ((process.env.NGROK_AUTHTOKEN ?? "").trim()) return true;
-  const configPath = path.join(process.env.LOCALAPPDATA ?? "", "ngrok", "ngrok.yml");
-  if (!fs.existsSync(configPath)) return false;
-  try {
-    return /authtoken:\s*\S+/i.test(fs.readFileSync(configPath, "utf8"));
-  } catch {
-    return false;
-  }
-}
-
 function browseLocalFolder() {
   if (process.platform !== "win32") {
     throw new Error("Folder picker is currently available on Windows only.");
@@ -1537,7 +1340,6 @@ function findNgrok() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
-
 function openBrowser(url) {
   if (process.platform === "win32") {
     spawn("cmd", ["/c", "start", "", url], {
@@ -1661,8 +1463,6 @@ function icon(name) {
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h4"/><path d="M6 22v-4H2"/></svg>',
     rocket:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1 1-1.5 3-1.5 4.5 1.5 0 3.5-.5 4.5-1.5"/><path d="M9 15 5 19"/><path d="M15 9l-6 6"/><path d="M14 4h6v6c0 4.4-3.6 8-8 8H8v-4c0-4.4 3.6-10 6-10Z"/><path d="M15 9h.01"/></svg>',
-    save:
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
     settings:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05a2.1 2.1 0 1 1-2.97 2.97l-.05-.05A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.08 1.64V21a2.1 2.1 0 1 1-4.2 0v-.08A1.8 1.8 0 0 0 8.45 19.3a1.8 1.8 0 0 0-1.98.36l-.05.05a2.1 2.1 0 1 1-2.97-2.97l.05-.05A1.8 1.8 0 0 0 3.86 14.7a1.8 1.8 0 0 0-1.64-1.08H2a2.1 2.1 0 1 1 0-4.2h.08A1.8 1.8 0 0 0 3.7 8.35a1.8 1.8 0 0 0-.36-1.98l-.05-.05A2.1 2.1 0 1 1 6.26 3.35l.05.05A1.8 1.8 0 0 0 8.3 3.76h.1A1.8 1.8 0 0 0 9.48 2.1V2a2.1 2.1 0 1 1 4.2 0v.08a1.8 1.8 0 0 0 1.08 1.64 1.8 1.8 0 0 0 1.98-.36l.05-.05a2.1 2.1 0 1 1 2.97 2.97l-.05.05A1.8 1.8 0 0 0 19.36 8.3v.1A1.8 1.8 0 0 0 21 9.48H21a2.1 2.1 0 1 1 0 4.2h-.08A1.8 1.8 0 0 0 19.4 15Z"/></svg>',
     shield:
@@ -1772,12 +1572,6 @@ function renderPage() {
         font-size: 12px;
         margin-top: 2px;
       }
-      .brand-meta {
-        color: var(--sidebar-muted);
-        font-size: 12px;
-        line-height: 1.45;
-        margin-top: 8px;
-      }
       .nav {
         display: grid;
         gap: 10px;
@@ -1812,14 +1606,14 @@ function renderPage() {
       .device-card span { color: #4ade80; font-size: 14px; }
       .content {
         min-width: 0;
-        padding: 18px 28px;
+        padding: 24px 28px;
       }
       .topbar {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: 18px;
-        margin-bottom: 14px;
+        margin-bottom: 20px;
       }
       h1 {
         margin: 0;
@@ -1848,20 +1642,20 @@ function renderPage() {
       }
       .card { padding: 18px; }
       .hero-card {
-        min-height: 142px;
+        min-height: 174px;
         display: grid;
-        grid-template-columns: 120px minmax(430px, 0.95fr) minmax(420px, 1fr);
-        align-items: start;
-        gap: 18px;
-        padding: 18px 24px;
+        grid-template-columns: 178px minmax(0, 1fr);
+        align-items: center;
+        gap: 24px;
+        padding: 26px 28px;
         margin-bottom: 14px;
       }
       .agent-orb {
-        width: 104px;
-        height: 104px;
+        width: 132px;
+        height: 132px;
         display: grid;
         place-items: center;
-        border: 8px solid rgba(30, 189, 114, 0.3);
+        border: 9px solid rgba(30, 189, 114, 0.3);
         border-top-color: var(--green);
         border-right-color: var(--green);
         border-radius: 50%;
@@ -1880,84 +1674,14 @@ function renderPage() {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 0 0 8px;
-        font-size: 25px;
+        margin: 0 0 10px;
+        font-size: 26px;
         font-weight: 800;
       }
       .hero-subtitle {
-        margin-bottom: 14px;
+        margin-bottom: 18px;
         color: var(--muted);
         font-size: 15px;
-      }
-      .hero-url-panel {
-        min-width: 0;
-        padding: 14px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel-soft);
-      }
-      .hero-url-panel .title {
-        margin-bottom: 8px;
-        font-size: 15px;
-      }
-      .hero-url-panel .hint {
-        margin: 8px 0 0;
-      }
-      .hero-url-panel .url {
-        min-width: 0;
-        background: var(--panel);
-      }
-      .tunnel-settings {
-        display: grid;
-        gap: 10px;
-        margin-top: 12px;
-        padding-top: 12px;
-        border-top: 1px solid var(--line);
-      }
-      .tunnel-settings .row {
-        align-items: flex-end;
-      }
-      .field {
-        display: grid;
-        gap: 5px;
-        min-width: 150px;
-        flex: 1;
-      }
-      .field label {
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-      }
-      .field select,
-      .field input {
-        min-width: 0;
-        width: 100%;
-      }
-      .secret-status {
-        color: var(--green-2);
-        font-size: 12px;
-        font-weight: 700;
-      }
-      .hero-system-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 14px;
-      }
-      .hero-system-grid .info-card {
-        min-height: 86px;
-        padding: 10px;
-      }
-      .hero-system-grid .info-icon {
-        width: 24px;
-        height: 24px;
-        margin-bottom: 8px;
-      }
-      .hero-system-grid .info-card strong {
-        margin-bottom: 5px;
-        font-size: 12px;
-      }
-      .hero-system-grid .info-card span {
-        font-size: 13px;
       }
       .stack { display: grid; gap: 14px; }
       .view { display: none; }
@@ -1966,7 +1690,6 @@ function renderPage() {
         display: grid;
         grid-template-columns: 1fr 1.05fr;
         gap: 14px;
-        align-items: stretch;
       }
       .info-grid {
         display: grid;
@@ -2126,67 +1849,6 @@ function renderPage() {
         border-color: rgba(30, 189, 114, 0.38);
         color: var(--green-2);
         background: rgba(30, 189, 114, 0.08);
-      }
-      .badge.health-ready {
-        border-color: rgba(30, 189, 114, 0.42);
-        color: var(--green-2);
-        background: rgba(30, 189, 114, 0.08);
-      }
-      .badge.health-review {
-        border-color: rgba(245, 158, 11, 0.48);
-        color: #b45309;
-        background: rgba(245, 158, 11, 0.12);
-      }
-      .badge.health-setup {
-        border-color: rgba(233, 75, 85, 0.45);
-        color: var(--red);
-        background: rgba(233, 75, 85, 0.08);
-      }
-      [data-theme="dark"] .badge.health-review { color: #fbbf24; }
-      .project-health {
-        display: grid;
-        gap: 10px;
-        margin-top: 12px;
-      }
-      .health-checks {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .health-check {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 28px;
-        padding: 0 9px;
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        background: var(--panel);
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-      }
-      .health-check.ok {
-        color: var(--green-2);
-        border-color: rgba(30, 189, 114, 0.32);
-        background: rgba(30, 189, 114, 0.07);
-      }
-      .health-check.missing {
-        color: #b45309;
-        border-color: rgba(245, 158, 11, 0.36);
-        background: rgba(245, 158, 11, 0.1);
-      }
-      [data-theme="dark"] .health-check.missing { color: #fbbf24; }
-      .recent-files {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .recent-files strong {
-        color: var(--ink);
-        margin-right: 6px;
-      }
-      .recent-file {
-        font-family: Consolas, "Courier New", monospace;
       }
       .event-badges {
         display: flex;
@@ -2370,16 +2032,6 @@ function renderPage() {
         color: #ff8a92;
         font-weight: 800;
       }
-      .log-card {
-        display: flex;
-        flex-direction: column;
-        min-height: 100%;
-      }
-      .log-card #logs {
-        flex: 0 0 auto;
-        height: 380px;
-        min-height: 0;
-      }
       .log-line.complete {
         color: #86efac;
         font-weight: 800;
@@ -2416,11 +2068,6 @@ function renderPage() {
           <div>
             <div class="brand-title">Personal MCP Agent</div>
             <div class="brand-version">Version ${appVersion}</div>
-            <div class="brand-meta">
-              \u0e1e\u0e31\u0e12\u0e19\u0e32\u0e42\u0e14\u0e22 \u0e1c\u0e2d.\u0e2a\u0e38\u0e18\u0e19 \u0e1e\u0e38\u0e17\u0e18\u0e23\u0e31\u0e15\u0e19\u0e4c<br />
-              \u0e1c\u0e39\u0e49\u0e2d\u0e33\u0e19\u0e27\u0e22\u0e01\u0e32\u0e23\u0e42\u0e23\u0e07\u0e40\u0e23\u0e35\u0e22\u0e19\u0e27\u0e31\u0e14\u0e44\u0e1c\u0e48\u0e21\u0e38\u0e49\u0e07<br />
-              086-6271047
-            </div>
           </div>
         </div>
         <nav class="nav">
@@ -2460,39 +2107,19 @@ function renderPage() {
                 <button id="stop" class="danger">${icon("square")} หยุด</button>
                 <button id="refresh">${icon("refresh")} รีเฟรช</button>
               </div>
-              <div class="info-grid hero-system-grid">
-                <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
-                <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
-                <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
-              </div>
-            </div>
-            <div class="hero-url-panel">
-              <div class="title">MCP URL \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a ChatGPT</div>
-              <div class="row">
-                <div id="url" class="url">\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35 URL \u0e43\u0e2b\u0e49\u0e01\u0e14 Start \u0e01\u0e48\u0e2d\u0e19</div>
-                <button id="copy">${icon("copy")} <span id="copyText">\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01</span></button>
-              </div>
-              <p class="hint">ngrok \u0e40\u0e1b\u0e47\u0e19 Tunnel \u0e2b\u0e25\u0e31\u0e01\u0e15\u0e31\u0e27\u0e40\u0e14\u0e35\u0e22\u0e27\u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a \u0e43\u0e0a\u0e49 URL \u0e19\u0e35\u0e49\u0e19\u0e33\u0e44\u0e1b\u0e43\u0e2a\u0e48\u0e43\u0e19 ChatGPT</p>
-              <div class="tunnel-settings">
-                <div class="row">
-                  <div class="field">
-                    <label for="ngrokAuthtoken">ngrok authtoken</label>
-                    <input id="ngrokAuthtoken" type="password" placeholder="\u0e27\u0e32\u0e07 token \u0e08\u0e32\u0e01 ngrok dashboard" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="ngrokDomain">ngrok static/dev domain</label>
-                    <input id="ngrokDomain" placeholder="\u0e40\u0e0a\u0e48\u0e19 abc123.ngrok-free.dev" />
-                  </div>
-                </div>
-                <div class="row">
-                  <button id="saveTunnelConfig">${icon("save")} \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 ngrok</button>
-                </div>
-                <div id="tunnelConfigStatus" class="secret-status"></div>
-              </div>
             </div>
           </section>
 
           <div class="stack">
+            <section class="card">
+              <div class="title">MCP URL สำหรับ ChatGPT</div>
+              <div class="row">
+                <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
+                <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
+              </div>
+              <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
+            </section>
+
             <div class="grid">
               <section class="card">
                 <div class="title">โปรเจกต์ที่ใช้งาน</div>
@@ -2518,17 +2145,27 @@ function renderPage() {
                   <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
                 </div>
               </section>
-              <section class="card log-card">
-                <div class="logs-head">
-                  <div class="title" style="margin:0">บันทึกการทำงาน</div>
-                  <div class="row">
-                    <button id="logFilter">${icon("filter")} ทั้งหมด</button>
-                    <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
-                  </div>
+
+              <section class="card">
+                <div class="title">ข้อมูลระบบ</div>
+                <div class="info-grid">
+                  <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
+                  <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
+                  <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
                 </div>
-                <pre id="logs"></pre>
               </section>
             </div>
+
+            <section class="card">
+              <div class="logs-head">
+                <div class="title" style="margin:0">บันทึกการทำงาน</div>
+                <div class="row">
+                  <button id="logFilter">${icon("filter")} ทั้งหมด</button>
+                  <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
+                </div>
+              </div>
+              <pre id="logs"></pre>
+            </section>
           </div>
         </div>
 
@@ -2577,14 +2214,6 @@ function renderPage() {
               <button id="gitSelectAll">${icon("check")} เลือกทั้งหมดที่ปลอดภัย</button>
             </div>
             <div id="gitSummary" class="hint" style="margin-top:10px"></div>
-            <div id="upstreamPanel" class="git-output" style="display:none; margin-top:10px">
-              <div class="title" style="margin:0 0 8px">ตั้ง Upstream ไป GitHub</div>
-              <div class="row">
-                <input id="upstreamUrl" placeholder="https://github.com/username/repository.git" />
-                <button id="setUpstream">${icon("upload")} ตั้ง Upstream และ Push ครั้งแรก</button>
-              </div>
-              <p class="hint" style="margin:8px 0 0">สร้าง repo บน GitHub ให้เรียบร้อยก่อน แล้ววาง URL ที่นี่ ระบบจะตั้ง origin, เปลี่ยน branch เป็น main และ push -u ให้</p>
-            </div>
             <div id="gitFiles" class="file-list"></div>
             <div class="column">
               <div class="row">
@@ -2625,7 +2254,6 @@ function renderPage() {
               <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace Root</strong><span id="settingsWorkspace"></span></div>
               <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="settingsProject"></span></div>
               <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Permission Mode</strong><span id="settingsMode"></span></div>
-              <div class="info-card"><div class="info-icon">${icon("rocket")}</div><strong>Tunnel Provider</strong><span id="settingsTunnel"></span></div>
               <div class="info-card"><div class="info-icon">${icon("monitor")}</div><strong>GUI Port</strong><span>${guiPort}</span></div>
               <div class="info-card"><div class="info-icon">${icon("refresh")}</div><strong>Gateway Port</strong><span>${gatewayPort}</span></div>
             </div>
@@ -2649,10 +2277,6 @@ function renderPage() {
         copy: document.querySelector("#copy"),
         copyText: document.querySelector("#copyText"),
         url: document.querySelector("#url"),
-        ngrokAuthtoken: document.querySelector("#ngrokAuthtoken"),
-        ngrokDomain: document.querySelector("#ngrokDomain"),
-        saveTunnelConfig: document.querySelector("#saveTunnelConfig"),
-        tunnelConfigStatus: document.querySelector("#tunnelConfigStatus"),
         projects: document.querySelector("#projects"),
         projectUrl: document.querySelector("#projectUrl"),
         addProjectUrl: document.querySelector("#addProjectUrl"),
@@ -2672,9 +2296,6 @@ function renderPage() {
         gitProject: document.querySelector("#gitProject"),
         gitRefresh: document.querySelector("#gitRefresh"),
         gitSelectAll: document.querySelector("#gitSelectAll"),
-        upstreamPanel: document.querySelector("#upstreamPanel"),
-        upstreamUrl: document.querySelector("#upstreamUrl"),
-        setUpstream: document.querySelector("#setUpstream"),
         gitFiles: document.querySelector("#gitFiles"),
         gitSummary: document.querySelector("#gitSummary"),
         gitDevTest: document.querySelector("#gitDevTest"),
@@ -2691,57 +2312,19 @@ function renderPage() {
         settingsWorkspace: document.querySelector("#settingsWorkspace"),
         settingsProject: document.querySelector("#settingsProject"),
         settingsMode: document.querySelector("#settingsMode"),
-        settingsTunnel: document.querySelector("#settingsTunnel"),
       };
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
       document.documentElement.dataset.theme = savedTheme;
       let latestDevUrl = "";
 
-      function reportClientError(error) {
-        const message = error?.message || String(error || "Unknown client error");
-        console.error(error);
-        const line = new Date().toLocaleTimeString() + "  ERROR  [ui] " + message;
-        [els.logs, els.logsFull, els.gitOutput].filter(Boolean).forEach((target) => {
-          target.textContent = line + "\\n" + (target.textContent || "");
-        });
-        if (els.status) {
-          els.status.textContent = "มีข้อผิดพลาด";
-          els.status.className = "status-pill status-error";
-        }
-      }
-
-      function bind(element, event, handler) {
-        if (!element) return;
-        element.addEventListener(event, async (...args) => {
-          try {
-            await handler(...args);
-          } catch (error) {
-            reportClientError(error);
-          }
-        });
-      }
-
-      function bindAll(elements, event, handler) {
-        Array.from(elements || []).forEach((element) => bind(element, event, handler));
-      }
-
-      window.addEventListener("error", (event) => {
-        reportClientError(event.error || event.message);
-      });
-      window.addEventListener("unhandledrejection", (event) => {
-        reportClientError(event.reason);
-      });
-
-      bindAll(els.navItems, "click", (event) => {
-        const view = event.currentTarget?.dataset?.view;
-        if (view) showView(view);
-      });
-
       els.start.addEventListener("click", () => post("/api/start"));
       els.stop.addEventListener("click", () => post("/api/stop"));
       els.refresh.addEventListener("click", refreshAll);
       els.settingsTop.addEventListener("click", () => showView("settings"));
+      els.navItems.forEach((item) => {
+        item.addEventListener("click", () => showView(item.dataset.view));
+      });
       els.themeToggle.addEventListener("click", () => {
         const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         document.documentElement.dataset.theme = next;
@@ -2759,26 +2342,6 @@ function renderPage() {
           els.copyText.textContent = "คัดลอก";
           els.copy.querySelector("svg").outerHTML = '${icon("copy").replaceAll("'", "\\'")}';
         }, 1600);
-      });
-      els.saveTunnelConfig.addEventListener("click", async () => {
-        els.saveTunnelConfig.disabled = true;
-        els.tunnelConfigStatus.textContent = "กำลังบันทึก Tunnel...";
-        try {
-          const response = await post("/api/tunnel/config", {
-            ngrokAuthtoken: els.ngrokAuthtoken.value,
-            ngrokDomain: els.ngrokDomain.value,
-          });
-          if (!response) {
-            els.tunnelConfigStatus.textContent = "บันทึกไม่สำเร็จ";
-            return;
-          }
-          els.ngrokAuthtoken.value = "";          els.tunnelConfigStatus.textContent = "บันทึกแล้ว ถ้า Agent กำลังทำงานอยู่ให้ Stop แล้ว Start ใหม่";
-          renderTunnelConfig(response);
-        } catch (error) {
-          els.tunnelConfigStatus.textContent = error.message;
-        } finally {
-          els.saveTunnelConfig.disabled = false;
-        }
       });
       els.setProject.addEventListener("click", async () => {
         await post("/api/projects/default", { project: els.projects.value });
@@ -2816,28 +2379,6 @@ function renderPage() {
         document.querySelectorAll(".git-file-check:not(:disabled)").forEach((item) => {
           item.checked = true;
         });
-      });
-      els.setUpstream.addEventListener("click", async () => {
-        if (!els.upstreamUrl.value.trim()) {
-          els.gitOutput.textContent = "ใส่ GitHub repository URL ก่อน เช่น https://github.com/username/repo.git";
-          return;
-        }
-        if (!confirm("ตั้ง origin และ push ครั้งแรกขึ้น GitHub ใช่ไหม? ตรวจให้แน่ใจว่าสร้าง repo บน GitHub แล้ว")) return;
-        els.setUpstream.disabled = true;
-        els.gitOutput.textContent = "กำลังตั้ง upstream และ push ครั้งแรก...";
-        try {
-          const response = await post("/api/git/upstream", {
-            project: els.gitProject.value,
-            remoteUrl: els.upstreamUrl.value,
-          });
-          els.gitOutput.textContent = "ตั้ง upstream สำเร็จ: " + response.upstream;
-          await refreshGitStatus();
-          await refreshAll();
-        } catch (error) {
-          els.gitOutput.textContent = error.message;
-        } finally {
-          els.setUpstream.disabled = false;
-        }
       });
       els.gitDevTest.addEventListener("click", async () => {
         els.gitDevTest.disabled = true;
@@ -2990,10 +2531,6 @@ function renderPage() {
           + behindState
           + '</div>'
           + '<div class="hint" style="margin-top:6px">Remote: ' + escapeHtml(data.remote || "-") + '</div>';
-        els.upstreamPanel.style.display = tracking.upstream ? "none" : "block";
-        if (!els.upstreamUrl.value && data.remote) {
-          els.upstreamUrl.value = data.remote;
-        }
         if (!els.commitMessage.value && data.suggestedMessage) {
           els.commitMessage.value = data.suggestedMessage;
         }
@@ -3039,21 +2576,6 @@ function renderPage() {
         renderProjectDetails(details);
       }
 
-      function renderTunnelConfig(data) {
-        setControlValue(els.ngrokDomain, data.ngrokDomain || "");
-        if (!els.ngrokAuthtoken.value && data.ngrokConfigured) {
-          els.ngrokAuthtoken.placeholder = "\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e41\u0e25\u0e49\u0e27 \u0e43\u0e2a\u0e48\u0e43\u0e2b\u0e21\u0e48\u0e40\u0e21\u0e37\u0e48\u0e2d\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19";
-        }
-        if (!els.tunnelConfigStatus.textContent) {
-          els.tunnelConfigStatus.textContent = data.ngrokConfigured ? "ngrok authtoken \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e27\u0e49\u0e41\u0e25\u0e49\u0e27" : "\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 ngrok authtoken";
-        }
-      }
-
-      function setControlValue(element, value) {
-        if (document.activeElement === element) return;
-        element.value = value;
-      }
-
       function renderStatus(data) {
         const label = data.phase === "ready" ? "Ready" : data.phase === "starting" ? "Starting" : data.phase === "error" ? "Error" : "Stopped";
         els.status.textContent = data.phase === "ready" ? "เชื่อมต่อแล้ว" : data.phase === "starting" ? "กำลังเริ่ม" : data.phase === "error" ? "มีข้อผิดพลาด" : "ยังไม่เชื่อมต่อ";
@@ -3071,8 +2593,6 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
-        els.settingsTunnel.textContent = data.tunnelProvider || "-";
-        renderTunnelConfig(data);
         const logHtml = data.logs.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
           const level = item.label === "complete" ? "DONE" : item.label === "code" ? "CODE" : item.success === false ? "ERR " : "INFO";
@@ -3122,19 +2642,6 @@ function renderPage() {
           const events = (project.events || []).map((event) =>
             '<span class="badge event-badge">' + escapeHtml(event.label) + '</span>'
           ).join("");
-          const healthClass = project.health?.status === "ready" ? "health-ready" : project.health?.status === "setup" ? "health-setup" : "health-review";
-          const healthLabel = project.health?.status === "ready" ? "ตรวจแล้วพร้อม" : project.health?.status === "setup" ? "ต้องเริ่ม Git" : "ควรตรวจสอบ";
-          const checks = (project.health?.checks || []).map((check) =>
-            '<span class="health-check ' + (check.ok ? "ok" : "missing") + '">' + (check.ok ? "✓" : "!") + " " + escapeHtml(check.label) + '</span>'
-          ).join("");
-          const recentFiles = (project.recentFiles || []).map((file) =>
-            '<span class="recent-file">' + escapeHtml(file.name) + '</span>'
-          ).join(", ");
-          const health = '<div class="project-health">'
-            + '<div class="health-checks">' + checks + '</div>'
-            + '<div class="hint">' + escapeHtml(project.health?.summary || "-") + '</div>'
-            + '<div class="recent-files"><strong>ไฟล์แก้ล่าสุด</strong>' + (recentFiles || "-") + '</div>'
-            + '</div>';
           const readme = project.docs?.readme
             ? '<div class="doc-snippet"><strong>' + escapeHtml(project.docs.readme.file) + '</strong>' + escapeHtml(project.docs.readme.text || "-") + '</div>'
             : '<div class="doc-snippet"><strong>README</strong>ยังไม่มีไฟล์ README.md</div>';
@@ -3146,11 +2653,9 @@ function renderPage() {
             + '<div class="project-name">' + escapeHtml(project.name)
             + ' <span class="badge">' + escapeHtml(project.kind) + '</span>'
             + (project.active ? ' <span class="badge active-badge">active</span>' : '')
-            + ' <span class="badge ' + healthClass + '">' + healthLabel + '</span>'
             + '</div>'
             + '<div class="hint">' + escapeHtml(project.description) + '</div>'
             + (events ? '<div class="event-badges">' + events + '</div>' : '')
-            + health
             + '<div class="doc-preview">' + readme + todo + '</div>'
             + '<div class="project-meta">'
             + '<div><strong>ล่าสุด commit</strong>' + commit + '</div>'
@@ -3193,8 +2698,8 @@ function renderPage() {
 
       function renderLogText(value) {
         return escapeHtml(value)
-          .replace(/(^|[ \t\r\n,(])([+][0-9]+)(?=[ \t\r\n,),]|$)/g, '$1<span class="log-insertions">$2</span>')
-          .replace(/(^|[ \t\r\n,(])(-[0-9]+)(?=[ \t\r\n,),]|$)/g, '$1<span class="log-deletions">$2</span>');
+          .replace(/(^|[\\s,(])([+]\\d+)(?=[\\s,),]|$)/g, '$1<span class="log-insertions">$2</span>')
+          .replace(/(^|[\\s,(])(-\\d+)(?=[\\s,),]|$)/g, '$1<span class="log-deletions">$2</span>');
       }
 
       refreshAll();
