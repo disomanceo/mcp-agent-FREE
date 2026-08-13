@@ -1,5 +1,22 @@
 # TODO
 
+## 2026-08-13 v1.0.3 ngrok Auth and Dashboard Restore
+
+### Completed This Round
+
+- Restored ngrok-only tunnel settings in the GUI, based on the working ngrok auth flow around `ac6e5f9`.
+- Added `ngrok authtoken` and optional static/dev domain fields to the Home dashboard.
+- Added `/api/tunnel/config` so the app can save ngrok settings into `.env` and run `ngrok config add-authtoken`.
+- Removed the alternate tunnel direction from the active path and kept ngrok as the single supported tunnel in the UI.
+- Reworked the Home dashboard layout: system cards sit under the Agent panel, MCP URL sits on the right, and the work log occupies the lower-right panel.
+- Bumped app and installer version to `1.0.3`.
+
+### Next TODO
+
+- Add a dedicated "Reset stuck app" button in the GUI that force-stops old Node/ngrok processes.
+- Add richer tunnel diagnostics that explains old ngrok versions, missing authtoken, and domain mismatch in Thai.
+- Add a Help page with screenshots for installing ngrok, saving the token, starting the Agent, and copying MCP URL into ChatGPT.
+
 ## 2026-08-13 v1.0.2 Batch/CMD Usability Pass
 
 ### Completed This Round

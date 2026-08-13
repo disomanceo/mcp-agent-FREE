@@ -41,6 +41,9 @@ app.get("/api/status", async (_req, res) => {
     workspaceRoot: process.env.WORKSPACE_ROOT ?? "",
     defaultProject: process.env.DEFAULT_PROJECT ?? "",
     permissionMode: process.env.PERMISSION_MODE ?? "SAFE",
+    tunnelProvider: "ngrok",
+    ngrokConfigured: hasNgrokConfig(),
+    ngrokDomain: process.env.NGROK_DOMAIN ?? "",
     version: appVersion,
     logs: combinedLogs(),
   });
@@ -117,6 +120,18 @@ app.post("/api/projects/browse-folder", (_req, res) => {
   try {
     const folder = browseLocalFolder();
     res.json({ ok: true, folder });
+  } catch (error) {
+    res.status(400).json({ error: messageOf(error) });
+  }
+});
+
+app.post("/api/tunnel/config", (req, res) => {
+  try {
+    const result = saveTunnelConfig({
+      ngrokAuthtoken: String(req.body?.ngrokAuthtoken ?? ""),
+      ngrokDomain: String(req.body?.ngrokDomain ?? ""),
+    });
+    res.json(result);
   } catch (error) {
     res.status(400).json({ error: messageOf(error) });
   }
@@ -290,7 +305,13 @@ async function startAll() {
   if (!ngrokPath) {
     throw new Error("ngrok.exe not found. Install ngrok first, then retry.");
   }
-  const ngrok = startChild("ngrok", ngrokPath, ["http", gatewayPort]);
+  const ngrokArgs = ["http"];
+  const domain = (process.env.NGROK_DOMAIN ?? "").trim();
+  if (domain) {
+    ngrokArgs.push("--domain", domain);
+  }
+  ngrokArgs.push(gatewayPort);
+  const ngrok = startChild("ngrok", ngrokPath, ngrokArgs);
 
   const publicUrl = await waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
 
@@ -1090,6 +1111,65 @@ function addProjectFromLocal(rawPath) {
   return { ok: true, project: project.name, kind: "local", copied, path: targetPath };
 }
 
+function saveTunnelConfig({ ngrokAuthtoken, ngrokDomain }) {
+  const token = ngrokAuthtoken.trim();
+  const cleanedNgrokDomain = ngrokDomain.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+
+  if (cleanedNgrokDomain && !/^[a-z0-9.-]+$/i.test(cleanedNgrokDomain)) {
+    throw new Error("ngrok domain ต้องเป็น hostname เช่น abc123.ngrok-free.dev");
+  }
+
+  const updates = {
+    TUNNEL_PROVIDER: "ngrok",
+    TUNNEL_FALLBACK: "none",
+    NGROK_DOMAIN: cleanedNgrokDomain,
+  };
+  if (token) updates.NGROK_AUTHTOKEN = token;
+
+  for (const [key, value] of Object.entries(updates)) {
+    upsertEnvValue(key, value);
+    process.env[key] = value;
+  }
+
+  if (token) {
+    configureNgrokAuthtoken(token);
+  }
+
+  log("launcher", "ngrok settings saved.");
+  return {
+    ok: true,
+    tunnelProvider: "ngrok",
+    ngrokConfigured: hasNgrokConfig(),
+    ngrokDomain: process.env.NGROK_DOMAIN ?? "",
+  };
+}
+
+function configureNgrokAuthtoken(token) {
+  const ngrokPath = findNgrok();
+  if (!ngrokPath) {
+    throw new Error("บันทึก token แล้ว แต่ยังไม่พบ ngrok.exe ให้ติดตั้ง ngrok ก่อน");
+  }
+  const result = spawnSync(ngrokPath, ["config", "add-authtoken", token], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 30_000,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "ตั้งค่า ngrok authtoken ไม่สำเร็จ");
+  }
+}
+
+function hasNgrokConfig() {
+  if ((process.env.NGROK_AUTHTOKEN ?? "").trim()) return true;
+  const configPath = path.join(process.env.LOCALAPPDATA ?? "", "ngrok", "ngrok.yml");
+  if (!fs.existsSync(configPath)) return false;
+  try {
+    return /authtoken:\s*\S+/i.test(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function browseLocalFolder() {
   if (process.platform !== "win32") {
     throw new Error("Folder picker is currently available on Windows only.");
@@ -1685,6 +1765,52 @@ function renderPage() {
         font-size: 15px;
       }
       .stack { display: grid; gap: 14px; }
+      .home-dashboard {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.95fr);
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+      .agent-column {
+        display: grid;
+        gap: 14px;
+      }
+      .agent-column .hero-card {
+        margin-bottom: 0;
+      }
+      .hero-url-panel {
+        display: grid;
+        align-content: start;
+        gap: 12px;
+      }
+      .tunnel-settings {
+        display: grid;
+        gap: 10px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      .tunnel-settings .row {
+        align-items: flex-end;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+        flex: 1;
+        min-width: 190px;
+      }
+      .field label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .secret-status {
+        min-height: 20px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .home-log {
+        height: 326px;
+      }
       .view { display: none; }
       .view.active-view { display: block; }
       .grid {
@@ -2050,7 +2176,7 @@ function renderPage() {
       @media (max-width: 980px) {
         .app-shell { grid-template-columns: 1fr; }
         .sidebar { position: relative; height: auto; }
-        .hero-card, .grid, .info-grid, .project-card, .project-meta, .doc-preview, .settings-grid, .git-steps, .file-row, .deploy-grid { grid-template-columns: 1fr; }
+        .home-dashboard, .hero-card, .grid, .info-grid, .project-card, .project-meta, .doc-preview, .settings-grid, .git-steps, .file-row, .deploy-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .content { padding: 18px; }
@@ -2098,75 +2224,95 @@ function renderPage() {
         </div>
 
         <div id="view-home" class="view active-view">
-          <section class="hero-card">
-            <div class="agent-orb"><div class="robot">${icon("bot")}</div></div>
-            <div>
-              <h2 class="hero-title"><span id="heroTitle">Agent ยังไม่ทำงาน</span> ${icon("shield")}</h2>
-              <div class="hero-subtitle">Windows Desktop Agent <span aria-hidden="true">•</span> <span id="heroMode">WORK mode</span></div>
-              <div class="row">
-                <button id="start" class="primary">${icon("play")} เริ่มทำงาน</button>
-                <button id="stop" class="danger">${icon("square")} หยุด</button>
-                <button id="refresh">${icon("refresh")} รีเฟรช</button>
-              </div>
-            </div>
-          </section>
-
           <div class="stack">
-            <section class="card">
-              <div class="title">MCP URL สำหรับ ChatGPT</div>
-              <div class="row">
-                <div id="url" class="url">ยังไม่มี URL ให้กด Start ก่อน</div>
-                <button id="copy">${icon("copy")} <span id="copyText">คัดลอก</span></button>
-              </div>
-              <p class="hint">ถ้าใช้ ngrok ฟรี URL อาจเปลี่ยนเมื่อเปิดใหม่ ให้ copy URL ล่าสุดไปใส่ใน ChatGPT</p>
-            </section>
+            <div class="home-dashboard">
+              <div class="agent-column">
+                <section class="hero-card">
+                  <div class="agent-orb"><div class="robot">${icon("bot")}</div></div>
+                  <div>
+                    <h2 class="hero-title"><span id="heroTitle">&#3648;&#3629;&#3648;&#3592;&#3609;&#3605;&#3660;&#3618;&#3633;&#3591;&#3652;&#3617;&#3656;&#3607;&#3635;&#3591;&#3634;&#3609;</span> ${icon("shield")}</h2>
+                    <div class="hero-subtitle">Windows Desktop Agent <span aria-hidden="true">&bull;</span> <span id="heroMode">WORK mode</span></div>
+                    <div class="row">
+                      <button id="start" class="primary">${icon("play")} &#3648;&#3619;&#3636;&#3656;&#3617;&#3607;&#3635;&#3591;&#3634;&#3609;</button>
+                      <button id="stop" class="danger">${icon("square")} &#3627;&#3618;&#3640;&#3604;</button>
+                      <button id="refresh">${icon("refresh")} &#3619;&#3637;&#3648;&#3615;&#3619;&#3594;</button>
+                    </div>
+                  </div>
+                </section>
 
-            <div class="grid">
+                <section class="card">
+                  <div class="title">&#3586;&#3657;&#3629;&#3617;&#3641;&#3621;&#3619;&#3632;&#3610;&#3610;</div>
+                  <div class="info-grid">
+                    <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
+                    <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
+                    <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+                  </div>
+                </section>
+              </div>
+
+              <section class="card hero-url-panel">
+                <div class="title">MCP URL &#3626;&#3635;&#3627;&#3619;&#3633;&#3610; ChatGPT</div>
+                <div class="row">
+                  <div id="url" class="url">&#3618;&#3633;&#3591;&#3652;&#3617;&#3656;&#3617;&#3637; URL &#3651;&#3627;&#3657;&#3585;&#3604; Start &#3585;&#3656;&#3629;&#3609;</div>
+                  <button id="copy">${icon("copy")} <span id="copyText">&#3588;&#3633;&#3604;&#3621;&#3629;&#3585;</span></button>
+                </div>
+                <p class="hint">ngrok &#3648;&#3611;&#3655;&#3609; Tunnel &#3627;&#3621;&#3633;&#3585;&#3586;&#3629;&#3591;&#3619;&#3632;&#3610;&#3610; &#3651;&#3594;&#3657; URL &#3609;&#3637;&#3657;&#3609;&#3635;&#3652;&#3611;&#3651;&#3626;&#3656;&#3651;&#3609; ChatGPT</p>
+                <div class="tunnel-settings">
+                  <div class="row">
+                    <div class="field">
+                      <label for="ngrokAuthtoken">ngrok authtoken</label>
+                      <input id="ngrokAuthtoken" type="password" placeholder="&#3623;&#3634;&#3591; token &#3592;&#3634;&#3585; ngrok dashboard" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                      <label for="ngrokDomain">ngrok static/dev domain</label>
+                      <input id="ngrokDomain" placeholder="&#3648;&#3594;&#3656;&#3609; abc123.ngrok-free.dev" />
+                    </div>
+                  </div>
+                  <div class="row">
+                    <button id="saveTunnelConfig">${icon("save")} &#3610;&#3633;&#3609;&#3607;&#3638;&#3585; ngrok</button>
+                  </div>
+                  <div id="tunnelConfigStatus" class="secret-status"></div>
+                </div>
+              </section>
+            </div>
+
+            <div class="grid home-work-grid">
               <section class="card">
-                <div class="title">โปรเจกต์ที่ใช้งาน</div>
+                <div class="title">&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3607;&#3637;&#3656;&#3651;&#3594;&#3657;&#3591;&#3634;&#3609;</div>
                 <div class="row">
                   <select id="projects"></select>
-                  <button id="setProject">${icon("star")} ตั้งเป็นโปรเจกต์หลัก</button>
+                  <button id="setProject">${icon("star")} &#3605;&#3633;&#3657;&#3591;&#3648;&#3611;&#3655;&#3609;&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3627;&#3621;&#3633;&#3585;</button>
                 </div>
-                <p class="hint">โปรเจกต์ที่ดีต้องอยู่ใต้ D:\\AI-Workspace หลังเปลี่ยนโปรเจกต์ให้ Stop แล้ว Start ใหม่</p>
+                <p class="hint">&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3607;&#3637;&#3656;&#3604;&#3637;&#3605;&#3657;&#3629;&#3591;&#3629;&#3618;&#3641;&#3656;&#3651;&#3605;&#3657; D:\\AI-Workspace &#3627;&#3621;&#3633;&#3591;&#3648;&#3611;&#3621;&#3637;&#3656;&#3618;&#3609;&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3651;&#3627;&#3657; Stop &#3649;&#3621;&#3657;&#3623; Start &#3651;&#3627;&#3617;&#3656;</p>
                 <div class="column" style="margin-top: 16px">
-                  <div class="title">เพิ่มโปรเจกต์จาก URL</div>
+                  <div class="title">&#3648;&#3614;&#3636;&#3656;&#3617;&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3592;&#3634;&#3585; URL</div>
                   <div class="row">
-                    <input id="projectUrl" placeholder="GitHub, Vercel, หรือ Google Apps Script URL" />
-                    <button id="addProjectUrl">${icon("plus")} เพิ่ม URL</button>
+                    <input id="projectUrl" placeholder="GitHub, Vercel, &#3627;&#3619;&#3639;&#3629; Google Apps Script URL" />
+                    <button id="addProjectUrl">${icon("plus")} &#3648;&#3614;&#3636;&#3656;&#3617; URL</button>
                   </div>
-                  <p class="hint">GitHub จะ clone source code ให้ทันที ส่วน Vercel/GAS จะสร้าง linked project พร้อม metadata</p>
+                  <p class="hint">GitHub &#3592;&#3632; clone source code &#3651;&#3627;&#3657;&#3607;&#3633;&#3609;&#3607;&#3637; &#3626;&#3656;&#3623;&#3609; Vercel/GAS &#3592;&#3632;&#3626;&#3619;&#3657;&#3634;&#3591; linked project &#3614;&#3619;&#3657;&#3629;&#3617; metadata</p>
 
-                  <label class="title" for="localProjectPath" style="margin:10px 0 0">\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e42\u0e1b\u0e23\u0e40\u0e08\u0e01\u0e15\u0e4c\u0e08\u0e32\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e43\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07</label>
+                  <label class="title" for="localProjectPath" style="margin:10px 0 0">&#3648;&#3614;&#3636;&#3656;&#3617;&#3650;&#3611;&#3619;&#3648;&#3592;&#3585;&#3605;&#3660;&#3592;&#3634;&#3585;&#3650;&#3615;&#3621;&#3648;&#3604;&#3629;&#3619;&#3660;&#3651;&#3609;&#3648;&#3588;&#3619;&#3639;&#3656;&#3629;&#3591;</label>
                   <div class="row">
                     <input id="localProjectPath" placeholder="D:\\Projects\\my-app" />
-                    <button id="browseLocalProject">${icon("folder")} \u0e40\u0e25\u0e37\u0e2d\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c</button>
-                    <button id="addLocalProject">${icon("folder")} \u0e40\u0e1e\u0e34\u0e48\u0e21 Local</button>
+                    <button id="browseLocalProject">${icon("folder")} &#3648;&#3621;&#3639;&#3629;&#3585;&#3650;&#3615;&#3621;&#3648;&#3604;&#3629;&#3619;&#3660;</button>
+                    <button id="addLocalProject">${icon("folder")} &#3648;&#3614;&#3636;&#3656;&#3617; Local</button>
                   </div>
-                  <p class="hint">\u0e16\u0e49\u0e32\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e2d\u0e22\u0e39\u0e48\u0e19\u0e2d\u0e01 D:\\AI-Workspace \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e40\u0e02\u0e49\u0e32 workspace \u0e42\u0e14\u0e22\u0e02\u0e49\u0e32\u0e21 node_modules/dist/.next</p>
+                  <p class="hint">&#3606;&#3657;&#3634;&#3650;&#3615;&#3621;&#3648;&#3604;&#3629;&#3619;&#3660;&#3629;&#3618;&#3641;&#3656;&#3609;&#3629;&#3585; D:\\AI-Workspace &#3619;&#3632;&#3610;&#3610;&#3592;&#3632;&#3588;&#3633;&#3604;&#3621;&#3629;&#3585;&#3648;&#3586;&#3657;&#3634; workspace &#3650;&#3604;&#3618;&#3586;&#3657;&#3634;&#3617; node_modules/dist/.next</p>
                 </div>
               </section>
 
               <section class="card">
-                <div class="title">ข้อมูลระบบ</div>
-                <div class="info-grid">
-                  <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace</strong><span id="workspace"></span></div>
-                  <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="activeProject"></span></div>
-                  <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Mode</strong><span id="mode"></span></div>
+                <div class="logs-head">
+                  <div class="title" style="margin:0">&#3610;&#3633;&#3609;&#3607;&#3638;&#3585;&#3585;&#3634;&#3619;&#3607;&#3635;&#3591;&#3634;&#3609;</div>
+                  <div class="row">
+                    <button id="logFilter">${icon("filter")} &#3607;&#3633;&#3657;&#3591;&#3627;&#3617;&#3604;</button>
+                    <button id="clearLogs">${icon("trash")} &#3621;&#3657;&#3634;&#3591;&#3611;&#3619;&#3632;&#3623;&#3633;&#3605;&#3636;</button>
+                  </div>
                 </div>
+                <pre id="logs" class="home-log"></pre>
               </section>
             </div>
-
-            <section class="card">
-              <div class="logs-head">
-                <div class="title" style="margin:0">บันทึกการทำงาน</div>
-                <div class="row">
-                  <button id="logFilter">${icon("filter")} ทั้งหมด</button>
-                  <button id="clearLogs">${icon("trash")} ล้างประวัติ</button>
-                </div>
-              </div>
-              <pre id="logs"></pre>
-            </section>
           </div>
         </div>
 
@@ -2255,6 +2401,7 @@ function renderPage() {
               <div class="info-card"><div class="info-icon">${icon("folder")}</div><strong>Workspace Root</strong><span id="settingsWorkspace"></span></div>
               <div class="info-card"><div class="info-icon">${icon("code")}</div><strong>Active Project</strong><span id="settingsProject"></span></div>
               <div class="info-card"><div class="info-icon">${icon("settings")}</div><strong>Permission Mode</strong><span id="settingsMode"></span></div>
+              <div class="info-card"><div class="info-icon">${icon("rocket")}</div><strong>Tunnel Provider</strong><span id="settingsTunnel"></span></div>
               <div class="info-card"><div class="info-icon">${icon("monitor")}</div><strong>GUI Port</strong><span>${guiPort}</span></div>
               <div class="info-card"><div class="info-icon">${icon("refresh")}</div><strong>Gateway Port</strong><span>${gatewayPort}</span></div>
             </div>
@@ -2278,6 +2425,10 @@ function renderPage() {
         copy: document.querySelector("#copy"),
         copyText: document.querySelector("#copyText"),
         url: document.querySelector("#url"),
+        ngrokAuthtoken: document.querySelector("#ngrokAuthtoken"),
+        ngrokDomain: document.querySelector("#ngrokDomain"),
+        saveTunnelConfig: document.querySelector("#saveTunnelConfig"),
+        tunnelConfigStatus: document.querySelector("#tunnelConfigStatus"),
         projects: document.querySelector("#projects"),
         projectUrl: document.querySelector("#projectUrl"),
         addProjectUrl: document.querySelector("#addProjectUrl"),
@@ -2313,6 +2464,7 @@ function renderPage() {
         settingsWorkspace: document.querySelector("#settingsWorkspace"),
         settingsProject: document.querySelector("#settingsProject"),
         settingsMode: document.querySelector("#settingsMode"),
+        settingsTunnel: document.querySelector("#settingsTunnel"),
       };
 
       const savedTheme = localStorage.getItem("pma-theme") || "light";
@@ -2375,6 +2527,23 @@ function renderPage() {
           els.copyText.textContent = "คัดลอก";
           els.copy.querySelector("svg").outerHTML = '${icon("copy").replaceAll("'", "\\'")}';
         }, 1600);
+      });
+      bind(els.saveTunnelConfig, "click", async () => {
+        els.saveTunnelConfig.disabled = true;
+        els.tunnelConfigStatus.textContent = "Saving ngrok settings...";
+        try {
+          const response = await post("/api/tunnel/config", {
+            ngrokAuthtoken: els.ngrokAuthtoken.value,
+            ngrokDomain: els.ngrokDomain.value,
+          });
+          if (response?.ok) {
+            els.ngrokAuthtoken.value = "";
+            els.tunnelConfigStatus.textContent = "Saved. Stop and Start again if the Agent is running.";
+            renderTunnelConfig(response);
+          }
+        } finally {
+          els.saveTunnelConfig.disabled = false;
+        }
       });
       bind(els.setProject, "click", async () => {
         await post("/api/projects/default", { project: els.projects.value });
@@ -2639,6 +2808,8 @@ function renderPage() {
         els.settingsWorkspace.textContent = data.workspaceRoot || "-";
         els.settingsProject.textContent = data.defaultProject || "-";
         els.settingsMode.textContent = data.permissionMode || "-";
+        if (els.settingsTunnel) els.settingsTunnel.textContent = data.tunnelProvider || "ngrok";
+        renderTunnelConfig(data);
         const logItems = Array.isArray(data.logs) ? data.logs : [];
         const logHtml = logItems.map((item) => {
           const lineClass = item.label === "complete" ? "log-line complete" : item.label === "code" ? "log-line code" : item.success === false ? "log-line error" : "log-line";
@@ -2649,6 +2820,27 @@ function renderPage() {
         els.logsFull.innerHTML = logHtml;
         els.logs.scrollTop = els.logs.scrollHeight;
         els.logsFull.scrollTop = els.logsFull.scrollHeight;
+      }
+
+      function setControlValue(element, value) {
+        if (!element) return;
+        if (document.activeElement === element) return;
+        element.value = value || "";
+      }
+
+      function renderTunnelConfig(data) {
+        data = data || {};
+        setControlValue(els.ngrokDomain, data.ngrokDomain || "");
+        if (els.ngrokAuthtoken) {
+          els.ngrokAuthtoken.placeholder = data.ngrokConfigured
+            ? "Saved. Paste a new token only when changing it."
+            : "Paste token from ngrok dashboard";
+        }
+        if (els.tunnelConfigStatus && !els.tunnelConfigStatus.textContent) {
+          els.tunnelConfigStatus.textContent = data.ngrokConfigured
+            ? "ngrok authtoken is saved."
+            : "ngrok authtoken is not saved yet.";
+        }
       }
 
       function renderProjects(data) {
