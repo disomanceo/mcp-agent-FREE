@@ -101,6 +101,8 @@ function Find-Ngrok {
   $candidates = @(
     (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\ngrok.exe"),
     (Join-Path $env:LOCALAPPDATA "Programs\ngrok\ngrok.exe"),
+    (Join-Path $env:ProgramFiles "ngrok\ngrok.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "ngrok\ngrok.exe"),
     (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe\ngrok.exe")
   )
 
@@ -113,6 +115,12 @@ function Find-Ngrok {
     if ($entry) {
       $candidates += (Join-Path $entry "ngrok.exe")
     }
+  }
+
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $candidates += Get-ChildItem -Path $wingetPackages -Recurse -Filter "ngrok.exe" -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
   }
 
   $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
@@ -130,7 +138,7 @@ function Install-Ngrok {
     return $null
   }
 
-  winget install --id Ngrok.Ngrok -e --accept-package-agreements --accept-source-agreements
+  winget install --id Ngrok.Ngrok -e --force --accept-package-agreements --accept-source-agreements
   $ngrok = Find-Ngrok
   if ($ngrok) {
     return (Update-Ngrok -NgrokPath $ngrok)
@@ -177,6 +185,108 @@ function Configure-Ngrok {
   }
 }
 
+function Find-Cloudflared {
+  $candidates = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\cloudflared.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\cloudflared\cloudflared.exe"),
+    (Join-Path $env:ProgramFiles "cloudflared\cloudflared.exe"),
+    (Join-Path $env:ProgramFiles "Cloudflare\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "cloudflared\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Cloudflare\cloudflared.exe")
+  )
+
+  $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
+  if ($command) {
+    $candidates += $command.Source
+  }
+
+  foreach ($entry in ($env:PATH -split [IO.Path]::PathSeparator)) {
+    if ($entry) {
+      $candidates += (Join-Path $entry "cloudflared.exe")
+    }
+  }
+
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $candidates += Get-ChildItem -Path $wingetPackages -Recurse -Filter "cloudflared.exe" -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
+  }
+
+  $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+
+function Install-Cloudflared {
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+    return $cloudflared
+  }
+
+  $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Write-Warning "cloudflared not found and winget is unavailable. Cloudflare fallback will be unavailable."
+    return $null
+  }
+
+  winget install --id Cloudflare.cloudflared -e --force --accept-package-agreements --accept-source-agreements
+  Refresh-ProcessPath
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+  }
+  return $cloudflared
+}
+
+function New-DesktopShortcut {
+  param(
+    [string]$Name,
+    [string]$TargetPath,
+    [string]$Description
+  )
+
+  if (-not (Test-Path -LiteralPath $TargetPath)) {
+    Write-Warning "Shortcut target missing: $TargetPath"
+    return
+  }
+
+  $desktop = [Environment]::GetFolderPath("Desktop")
+  $shortcutPath = Join-Path $desktop "$Name.lnk"
+  $shell = New-Object -ComObject WScript.Shell
+  $shortcut = $shell.CreateShortcut($shortcutPath)
+  $shortcut.TargetPath = $TargetPath
+  $shortcut.WorkingDirectory = $InstallDir
+  $shortcut.Description = $Description
+  $iconPath = Join-Path $InstallDir "assets\app-icon.ico"
+  if (Test-Path -LiteralPath $iconPath) {
+    $shortcut.IconLocation = $iconPath
+  }
+  $shortcut.Save()
+  Write-Host "Desktop shortcut created: $shortcutPath"
+}
+
+function Ensure-DesktopShortcuts {
+  New-DesktopShortcut `
+    -Name "Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Personal MCP Agent.cmd") `
+    -Description "Start Personal MCP Agent for ChatGPT"
+  New-DesktopShortcut `
+    -Name "Stop Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Stop Personal MCP Agent.cmd") `
+    -Description "Emergency stop for Personal MCP Agent processes"
+  New-DesktopShortcut `
+    -Name "Update Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Update Personal MCP Agent.cmd") `
+    -Description "Update Personal MCP Agent from GitHub"
+  New-DesktopShortcut `
+    -Name "Repair Personal MCP Agent" `
+    -TargetPath (Join-Path $InstallDir "Repair Personal MCP Agent.cmd") `
+    -Description "Reinstall dependencies and run diagnostics"
+  New-DesktopShortcut `
+    -Name "Run Doctor" `
+    -TargetPath (Join-Path $InstallDir "Run Doctor.cmd") `
+    -Description "Check Personal MCP Agent setup"
+}
+
 Write-Host "Configuring Personal MCP Agent..." -ForegroundColor Cyan
 
 Refresh-ProcessPath
@@ -203,6 +313,8 @@ try {
 
 $ngrok = Install-Ngrok
 Configure-Ngrok -NgrokPath $ngrok
+Install-Cloudflared | Out-Null
+Ensure-DesktopShortcuts
 
 Write-Host ""
 Write-Host "Personal MCP Agent is ready." -ForegroundColor Green

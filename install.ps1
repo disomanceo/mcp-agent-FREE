@@ -109,6 +109,8 @@ function Find-Ngrok {
   $candidates = @(
     (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\ngrok.exe"),
     (Join-Path $env:LOCALAPPDATA "Programs\ngrok\ngrok.exe"),
+    (Join-Path $env:ProgramFiles "ngrok\ngrok.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "ngrok\ngrok.exe"),
     (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe\ngrok.exe")
   )
 
@@ -121,6 +123,12 @@ function Find-Ngrok {
     if ($entry) {
       $candidates += (Join-Path $entry "ngrok.exe")
     }
+  }
+
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $candidates += Get-ChildItem -Path $wingetPackages -Recurse -Filter "ngrok.exe" -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
   }
 
   $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
@@ -138,7 +146,7 @@ function Install-Ngrok {
     return $null
   }
 
-  winget install --id Ngrok.Ngrok -e --accept-package-agreements --accept-source-agreements
+  winget install --id Ngrok.Ngrok -e --force --accept-package-agreements --accept-source-agreements
   $ngrok = Find-Ngrok
   if ($ngrok) {
     return (Update-Ngrok -NgrokPath $ngrok)
@@ -185,6 +193,58 @@ function Configure-Ngrok {
   }
 }
 
+function Find-Cloudflared {
+  $candidates = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\cloudflared.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\cloudflared\cloudflared.exe"),
+    (Join-Path $env:ProgramFiles "cloudflared\cloudflared.exe"),
+    (Join-Path $env:ProgramFiles "Cloudflare\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "cloudflared\cloudflared.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Cloudflare\cloudflared.exe")
+  )
+
+  $command = Get-Command "cloudflared" -ErrorAction SilentlyContinue
+  if ($command) {
+    $candidates += $command.Source
+  }
+
+  foreach ($entry in ($env:PATH -split [IO.Path]::PathSeparator)) {
+    if ($entry) {
+      $candidates += (Join-Path $entry "cloudflared.exe")
+    }
+  }
+
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $candidates += Get-ChildItem -Path $wingetPackages -Recurse -Filter "cloudflared.exe" -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
+  }
+
+  $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+
+function Install-Cloudflared {
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+    return $cloudflared
+  }
+
+  $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Write-Warning "cloudflared not found and winget is unavailable. Cloudflare fallback will be unavailable."
+    return $null
+  }
+
+  winget install --id Cloudflare.cloudflared -e --force --accept-package-agreements --accept-source-agreements
+  Refresh-ProcessPath
+  $cloudflared = Find-Cloudflared
+  if ($cloudflared) {
+    Write-Host "cloudflared found: $cloudflared"
+  }
+  return $cloudflared
+}
+
 Invoke-Step "Checking required tools" {
   Refresh-ProcessPath
   Ensure-Node
@@ -228,6 +288,10 @@ if (-not $SkipNgrok) {
     $ngrok = Install-Ngrok
     Configure-Ngrok -NgrokPath $ngrok
   }
+}
+
+Invoke-Step "Installing/checking Cloudflare fallback" {
+  Install-Cloudflared | Out-Null
 }
 
 function New-DesktopShortcut {

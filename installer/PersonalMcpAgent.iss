@@ -1,5 +1,5 @@
 #define MyAppName "Personal MCP Agent"
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "disomanceo"
 #define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
 #define MyAppExeName "Personal MCP Agent.cmd"
@@ -45,7 +45,7 @@ Name: "{group}\Update Personal MCP Agent"; Filename: "{app}\{#MyAppUpdateName}";
 Name: "{group}\Repair Personal MCP Agent"; Filename: "{app}\{#MyAppRepairName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"
 Name: "{group}\Run Doctor"; Filename: "{app}\{#MyAppDoctorName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"; Tasks: desktopicon
-Name: "{autodesktop}\Stop Personal MCP Agent"; Filename: "{app}\{#MyAppStopName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\Stop Personal MCP Agent"; Filename: "{app}\{#MyAppStopName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"
 Name: "{group}\Thai Quick Start Guide"; Filename: "{app}\docs\QUICKSTART-TH.md"
 
 [Run]

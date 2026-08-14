@@ -1,5 +1,24 @@
 # TODO
 
+## 2026-08-14 v1.0.7 ngrok Repair and Stop Shortcut Fix
+
+### Completed This Round
+
+- Made Start try to repair/install ngrok through winget before failing.
+- Expanded ngrok discovery to search PATH, common install folders, WinGet links, and WinGet package subfolders.
+- Added automatic ngrok version repair because ngrok `3.3.1` is rejected by accounts that require `3.20.0` or newer.
+- Added Cloudflare Quick Tunnel fallback when Windows Smart App Control blocks ngrok from running.
+- Restored cloudflared installation/checks so fallback is available on other machines.
+- Updated doctor and ngrok helper scripts to use the same stronger ngrok discovery.
+- Made the installer create the Stop Personal MCP Agent Desktop shortcut even when the optional desktop shortcut task is skipped.
+- Added post-install Desktop shortcut creation for Start, Stop, Update, Repair, and Doctor shortcuts.
+- Bumped app and installer version to `1.0.7`.
+
+### Next TODO
+
+- Add an in-GUI Repair button so users can run dependency/ngrok repair without leaving the browser.
+- Show a clearer Thai message if winget cannot install ngrok due to Store/App Installer restrictions.
+
 ## 2026-08-13 v1.0.6 Start Self-Repair for Missing Workspace Packages
 
 ### Completed This Round

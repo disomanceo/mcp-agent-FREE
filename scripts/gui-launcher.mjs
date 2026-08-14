@@ -303,10 +303,47 @@ async function startAll() {
     () => childExitError(agent, "Desktop Agent"),
   );
 
-  const ngrokPath = findNgrok();
-  if (!ngrokPath) {
-    throw new Error("ngrok.exe not found. Install ngrok first, then retry.");
+  const publicUrl = await startTunnel();
+
+  state.phase = "ready";
+  state.mcpUrl = `${publicUrl}/mcp`;
+  log("launcher", `READY: ${state.mcpUrl}`);
+}
+
+async function startTunnel() {
+  const errors = [];
+  try {
+    return await startNgrokTunnel();
+  } catch (error) {
+    const message = messageOf(error);
+    errors.push(`ngrok: ${message}`);
+    log("launcher", `ngrok tunnel failed: ${message}`);
   }
+
+  try {
+    return await startCloudflareTunnel();
+  } catch (error) {
+    const message = messageOf(error);
+    errors.push(`cloudflare: ${message}`);
+    log("launcher", `Cloudflare tunnel failed: ${message}`);
+  }
+
+  throw new Error(`No tunnel provider could start. ${errors.join(" | ")}`);
+}
+
+async function startNgrokTunnel() {
+  let ngrokPath = findNgrok();
+  if (!ngrokPath) {
+    log("launcher", "ngrok.exe not found. Trying winget install/repair for ngrok...");
+    installNgrok();
+    ngrokPath = findNgrok();
+  }
+  if (!ngrokPath) {
+    throw new Error(
+      "ngrok.exe not found. The installer could not find or install ngrok. Run Repair Personal MCP Agent, then start again.",
+    );
+  }
+  ensureNgrokCurrent(ngrokPath);
   const ngrokArgs = ["http"];
   const domain = (process.env.NGROK_DOMAIN ?? "").trim();
   if (domain) {
@@ -315,11 +352,29 @@ async function startAll() {
   ngrokArgs.push(gatewayPort);
   const ngrok = startChild("ngrok", ngrokPath, ngrokArgs);
 
-  const publicUrl = await waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
+  return waitForNgrokUrl(() => childExitError(ngrok, "ngrok"));
+}
 
-  state.phase = "ready";
-  state.mcpUrl = `${publicUrl}/mcp`;
-  log("launcher", `READY: ${state.mcpUrl}`);
+async function startCloudflareTunnel() {
+  const cloudflaredPath = findCloudflared();
+  if (!cloudflaredPath) {
+    throw new Error("cloudflared.exe not found. Install cloudflared first, then retry.");
+  }
+
+  const cloudflare = startChild("cloudflare", cloudflaredPath, [
+    "tunnel",
+    "--url",
+    `http://127.0.0.1:${gatewayPort}`,
+  ]);
+  try {
+    return await waitForCloudflareUrl(cloudflare, () =>
+      childExitError(cloudflare, "Cloudflare tunnel"),
+    );
+  } catch (error) {
+    killProcessTree(cloudflare.pid);
+    removeChild(cloudflare);
+    throw error;
+  }
 }
 
 function ensureWorkspaceDependencies() {
@@ -376,15 +431,26 @@ function startChild(label, command, args) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.lastOutput = "";
+  child.outputBuffer = "";
   child.exitCodeSeen = null;
+  child.spawnErrorSeen = null;
   children.push(child);
   child.stdout.on("data", (chunk) => {
-    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
-    log(label, chunk.toString().trimEnd());
+    const text = chunk.toString().trimEnd();
+    child.lastOutput = text || child.lastOutput;
+    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-12000);
+    log(label, text);
   });
   child.stderr.on("data", (chunk) => {
-    child.lastOutput = chunk.toString().trimEnd() || child.lastOutput;
-    log(label, chunk.toString().trimEnd());
+    const text = chunk.toString().trimEnd();
+    child.lastOutput = text || child.lastOutput;
+    child.outputBuffer = `${child.outputBuffer}\n${text}`.slice(-12000);
+    log(label, text);
+  });
+  child.on("error", (error) => {
+    child.spawnErrorSeen = error;
+    child.lastOutput = error.message;
+    log(label, error.message);
   });
   child.on("exit", (code) => {
     child.exitCodeSeen = code ?? 0;
@@ -471,6 +537,19 @@ async function waitForNgrokUrl(exitError) {
   throw new Error("ngrok did not expose a public HTTPS URL.");
 }
 
+async function waitForCloudflareUrl(child, exitError) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    const failure = exitError?.();
+    if (failure) throw failure;
+    const match = child.outputBuffer?.match(/https:\/\/[a-zA-Z0-9.-]+\.trycloudflare\.com/i);
+    if (match?.[0]) {
+      return match[0].replace(/\/$/, "");
+    }
+    await delay(500);
+  }
+  throw new Error("Cloudflare tunnel did not expose a public HTTPS URL.");
+}
+
 async function waitUntil(check, errorMessage, exitError) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const failure = exitError?.();
@@ -482,9 +561,17 @@ async function waitUntil(check, errorMessage, exitError) {
 }
 
 function childExitError(child, label) {
+  if (child.spawnErrorSeen) {
+    return new Error(`${label} could not start. ${messageOf(child.spawnErrorSeen)}`);
+  }
   if (child.exitCodeSeen === null || child.exitCodeSeen === undefined) return null;
   const detail = child.lastOutput ? ` Last output: ${child.lastOutput}` : "";
   return new Error(`${label} exited with code ${child.exitCodeSeen}.${detail}`);
+}
+
+function removeChild(child) {
+  const index = children.indexOf(child);
+  if (index >= 0) children.splice(index, 1);
 }
 
 function cleanupOrphanProcesses() {
@@ -516,7 +603,11 @@ Get-CimInstance Win32_Process | Where-Object {
   )
   $isPersonalRoot = $cmd -like "*$root*" -and $isPersonalNode
   $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$gatewayPort*"
-  return $ownsAppPort -or $isPersonalRoot -or $isNgrok
+  $isCloudflared = $cmd -like "*cloudflared*" -and $cmd -like "*tunnel*" -and (
+    $cmd -like "*$gatewayPort*" -or
+    $cmd -like "*trycloudflare*"
+  )
+  return $ownsAppPort -or $isPersonalRoot -or $isNgrok -or $isCloudflared
 } | ForEach-Object {
   taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
@@ -1423,6 +1514,8 @@ function findNgrok() {
   const candidates = [
     path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "ngrok.exe"),
     path.join(os.homedir(), "AppData", "Local", "Programs", "ngrok", "ngrok.exe"),
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "ngrok", "ngrok.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "ngrok", "ngrok.exe"),
     path.join(
       os.homedir(),
       "AppData",
@@ -1435,11 +1528,167 @@ function findNgrok() {
     ),
   ];
 
+  const where = spawnSync("where.exe", ["ngrok"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (where.status === 0 && where.stdout) {
+    candidates.push(...where.stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean));
+  }
+
   for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
     candidates.push(path.join(entry, "ngrok.exe"));
   }
 
-  return candidates.find((candidate) => fs.existsSync(candidate));
+  candidates.push(...findFilesUnder(
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages"),
+    "ngrok.exe",
+    4,
+  ));
+
+  return unique(candidates).find((candidate) => fs.existsSync(candidate));
+}
+
+function findCloudflared() {
+  const candidates = [
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "cloudflared.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Programs", "cloudflared", "cloudflared.exe"),
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "cloudflared", "cloudflared.exe"),
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Cloudflare", "cloudflared.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "cloudflared", "cloudflared.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Cloudflare", "cloudflared.exe"),
+    path.join(
+      os.homedir(),
+      "AppData",
+      "Local",
+      "Microsoft",
+      "WinGet",
+      "Packages",
+      "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe",
+      "cloudflared.exe",
+    ),
+    path.join(
+      os.homedir(),
+      "AppData",
+      "Local",
+      "Microsoft",
+      "WinGet",
+      "Packages",
+      "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe",
+      "cloudflared-windows-amd64.exe",
+    ),
+  ];
+
+  const where = spawnSync("where.exe", ["cloudflared"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (where.status === 0 && where.stdout) {
+    candidates.push(...where.stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean));
+  }
+
+  for (const entry of (process.env.PATH ?? "").split(path.delimiter)) {
+    candidates.push(path.join(entry, "cloudflared.exe"));
+  }
+
+  candidates.push(...findFilesUnder(
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages"),
+    "cloudflared.exe",
+    4,
+  ));
+
+  return unique(candidates).find((candidate) => fs.existsSync(candidate));
+}
+
+function installNgrok() {
+  const winget = spawnSync("where.exe", ["winget"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (winget.status !== 0) {
+    log("launcher", "winget is not available, so ngrok cannot be installed automatically.");
+    return;
+  }
+
+  const install = spawnSync(
+    "winget",
+    [
+      "install",
+      "--id",
+      "Ngrok.Ngrok",
+      "-e",
+      "--force",
+      "--accept-package-agreements",
+      "--accept-source-agreements",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 180_000,
+    },
+  );
+  if (install.stdout) log("winget", install.stdout.trimEnd());
+  if (install.stderr) log("winget", install.stderr.trimEnd());
+}
+
+function ensureNgrokCurrent(ngrokPath) {
+  const version = spawnSync(ngrokPath, ["version"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  if (version.error) {
+    throw new Error(`ngrok is installed but Windows could not run it: ${messageOf(version.error)}`);
+  }
+  const output = `${version.stdout ?? ""}\n${version.stderr ?? ""}`;
+  const match = output.match(/version\s+(\d+)\.(\d+)\.(\d+)/i);
+  const isTooOld =
+    match && (Number(match[1]) < 3 || (Number(match[1]) === 3 && Number(match[2]) < 20));
+
+  if (!isTooOld) return;
+
+  log("launcher", `ngrok ${match[1]}.${match[2]}.${match[3]} is too old. Running ngrok update...`);
+  const update = spawnSync(ngrokPath, ["update"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 180_000,
+  });
+  if (update.stdout) log("ngrok", update.stdout.trimEnd());
+  if (update.stderr) log("ngrok", update.stderr.trimEnd());
+  if (update.status !== 0) {
+    throw new Error("ngrok is installed but too old, and automatic ngrok update failed.");
+  }
+}
+
+function findFilesUnder(root, fileName, maxDepth) {
+  const results = [];
+  if (!root || maxDepth < 0 || !fs.existsSync(root)) return results;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) {
+      results.push(fullPath);
+    } else if (entry.isDirectory() && maxDepth > 0) {
+      results.push(...findFilesUnder(fullPath, fileName, maxDepth - 1));
+    }
+  }
+  return results;
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function openBrowser(url) {

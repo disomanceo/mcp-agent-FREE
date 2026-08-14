@@ -37,8 +37,12 @@ $targets = Get-CimInstance Win32_Process | Where-Object {
   )
   $isPersonalRoot = $cmd -like "*$resolvedInstallDir*" -and $isPersonalNode
   $isNgrok = $cmd -like "*ngrok*" -and $cmd -like "*http*" -and $cmd -like "*$GatewayPort*"
+  $isCloudflared = $cmd -like "*cloudflared*" -and $cmd -like "*tunnel*" -and (
+    $cmd -like "*$GatewayPort*" -or
+    $cmd -like "*trycloudflare*"
+  )
 
-  return $ownsAppPort -or $isPersonalRoot -or $isNgrok
+  return $ownsAppPort -or $isPersonalRoot -or $isNgrok -or $isCloudflared
 }
 
 $killed = 0

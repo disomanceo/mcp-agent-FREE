@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import dotenv from "dotenv";
 
 dotenv.config({ quiet: true });
@@ -30,6 +30,9 @@ child.on("exit", (code) => {
 function findNgrok() {
   const candidates = [
     path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Links", "ngrok.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Programs", "ngrok", "ngrok.exe"),
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "ngrok", "ngrok.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "ngrok", "ngrok.exe"),
     path.join(
       os.homedir(),
       "AppData",
@@ -42,10 +45,47 @@ function findNgrok() {
     ),
   ];
 
+  const where = spawnSync("where.exe", ["ngrok"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (where.status === 0 && where.stdout) {
+    candidates.push(...where.stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean));
+  }
+
   const pathEntries = (process.env.PATH ?? "").split(path.delimiter);
   for (const entry of pathEntries) {
     candidates.push(path.join(entry, "ngrok.exe"));
   }
 
-  return candidates.find((candidate) => fs.existsSync(candidate));
+  candidates.push(...findFilesUnder(
+    path.join(os.homedir(), "AppData", "Local", "Microsoft", "WinGet", "Packages"),
+    "ngrok.exe",
+    4,
+  ));
+
+  return [...new Set(candidates.filter(Boolean))].find((candidate) => fs.existsSync(candidate));
+}
+
+function findFilesUnder(root, fileName, maxDepth) {
+  const results = [];
+  if (!root || maxDepth < 0 || !fs.existsSync(root)) return results;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) {
+      results.push(fullPath);
+    } else if (entry.isDirectory() && maxDepth > 0) {
+      results.push(...findFilesUnder(fullPath, fileName, maxDepth - 1));
+    }
+  }
+  return results;
 }
