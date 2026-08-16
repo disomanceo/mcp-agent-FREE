@@ -1,12 +1,12 @@
-param(
-  [string]$InstallDir = "D:\personal-mcp-agent",
+﻿param(
+  [string]$InstallDir = "D:\mcp-agent-FREE",
   [string]$WorkspaceRoot = "D:\AI-Workspace",
   [string]$NgrokAuthtoken = $env:NGROK_AUTHTOKEN,
   [switch]$SkipNgrok
 )
 
 $ErrorActionPreference = "Stop"
-$RepoUrl = "https://github.com/disomanceo/personal-mcp-agent.git"
+$RepoUrl = "https://github.com/disomanceo/mcp-agent-FREE.git"
 
 function Assert-Command($Name, $InstallHint) {
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -318,7 +318,7 @@ function New-DesktopShortcut {
 
 Invoke-Step "Creating Desktop shortcuts" {
   New-DesktopShortcut `
-    -Name "Personal MCP Agent" `
+    -Name "Personal MCP Agent FREE" `
     -TargetPath (Join-Path $InstallDir "Personal MCP Agent.cmd") `
     -Description "Start Personal MCP Agent for ChatGPT"
   New-DesktopShortcut `
@@ -345,7 +345,7 @@ Write-Host "Install directory: $InstallDir"
 Write-Host "Workspace root: $WorkspaceRoot"
 Write-Host ""
 Write-Host "How to use:"
-Write-Host "1. Double-click 'Personal MCP Agent' on your Desktop."
+Write-Host "1. Double-click 'Personal MCP Agent FREE' on your Desktop."
 Write-Host "2. Wait for the MCP URL, for example: https://xxxxx.ngrok-free.app/mcp"
 Write-Host "3. Copy that /mcp URL into ChatGPT MCP / custom connector settings."
 Write-Host "4. Put real projects under: $WorkspaceRoot"

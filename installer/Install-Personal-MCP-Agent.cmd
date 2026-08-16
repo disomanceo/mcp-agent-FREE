@@ -1,12 +1,12 @@
 @echo off
 setlocal
-title Personal MCP Agent Installer
+title Personal MCP Agent FREE Installer
 
 echo.
-echo Personal MCP Agent installer
+echo Personal MCP Agent FREE installer
 echo ============================
 echo.
-echo This installer downloads and runs the official install.ps1 script from GitHub.
+echo This installer downloads and runs the FREE v1.0.7 install.ps1 script from GitHub.
 echo It will install/check Node.js, Git, ngrok, npm dependencies, local config,
 echo and the Desktop shortcut.
 echo.
@@ -22,7 +22,7 @@ if errorlevel 1 (
 set "INSTALL_PS1=%TEMP%\install-personal-mcp-agent.ps1"
 
 echo Downloading installer script...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1' -OutFile '%INSTALL_PS1%' -UseBasicParsing } catch { Write-Error $_; exit 1 }"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/disomanceo/mcp-agent-FREE/master/install.ps1' -OutFile '%INSTALL_PS1%' -UseBasicParsing } catch { Write-Error $_; exit 1 }"
 if errorlevel 1 (
   echo.
   echo ERROR: Could not download install.ps1.
@@ -47,7 +47,9 @@ if not "%RESULT%"=="0" (
 )
 
 echo Installation completed.
-echo You can start Personal MCP Agent from the Desktop shortcut.
+echo You can start Personal MCP Agent FREE from the Desktop shortcut.
 echo.
 pause
 exit /b 0
+
+

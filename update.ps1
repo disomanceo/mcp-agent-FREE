@@ -1,5 +1,5 @@
-param(
-  [string]$InstallDir = "D:\personal-mcp-agent"
+﻿param(
+  [string]$InstallDir = "D:\mcp-agent-FREE"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,3 +13,4 @@ git -C $InstallDir pull --ff-only
 npm --prefix $InstallDir install
 npm --prefix $InstallDir run build
 Write-Host "Update complete." -ForegroundColor Green
+

@@ -1,5 +1,5 @@
-param(
-  [string]$InstallDir = "D:\personal-mcp-agent",
+﻿param(
+  [string]$InstallDir = "D:\mcp-agent-FREE",
   [string]$WorkspaceRoot = "D:\AI-Workspace",
   [string]$NgrokAuthtoken = $env:NGROK_AUTHTOKEN
 )
@@ -266,7 +266,7 @@ function New-DesktopShortcut {
 
 function Ensure-DesktopShortcuts {
   New-DesktopShortcut `
-    -Name "Personal MCP Agent" `
+    -Name "Personal MCP Agent FREE" `
     -TargetPath (Join-Path $InstallDir "Personal MCP Agent.cmd") `
     -Description "Start Personal MCP Agent for ChatGPT"
   New-DesktopShortcut `
@@ -318,5 +318,5 @@ Ensure-DesktopShortcuts
 
 Write-Host ""
 Write-Host "Personal MCP Agent is ready." -ForegroundColor Green
-Write-Host "Start it from the Desktop shortcut: Personal MCP Agent"
+Write-Host "Start it from the Desktop shortcut: Personal MCP Agent FREE"
 Write-Host "Thai quick start guide: $InstallDir\docs\QUICKSTART-TH.md"

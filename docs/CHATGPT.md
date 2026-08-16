@@ -1,4 +1,4 @@
-# Connect from ChatGPT
+﻿# Connect from ChatGPT
 
 Goal: let ChatGPT call this machine through MCP tools.
 
@@ -17,7 +17,7 @@ Vercel Functions are not enough for the Desktop Agent WebSocket relay by themsel
 ## Local preparation
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm install
 npm run setup:local
 npm run mode:work
@@ -30,14 +30,14 @@ Close old Gateway or Agent terminals before starting the updated version. Old ru
 Easy mode: open everything in one terminal.
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run start:chatgpt
 ```
 
 Or double-click:
 
 ```text
-D:\personal-mcp-agent\Personal MCP Agent.cmd
+D:\mcp-agent-FREE\Personal MCP Agent.cmd
 ```
 
 The launcher starts Gateway, Desktop Agent, and ngrok, then prints the `MCP URL`.
@@ -48,14 +48,14 @@ Manual mode: open two terminals.
 Terminal 1:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run dev:gateway
 ```
 
 Terminal 2:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run dev:agent
 ```
 
@@ -69,7 +69,7 @@ curl http://127.0.0.1:8787/api/devices
 Terminal 3, for ngrok testing:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run tunnel:ngrok
 ```
 
@@ -84,7 +84,7 @@ https://example.ngrok-free.app/mcp
 ## Switch projects
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run project:list
 npm run project:set -- TravelTank300
 ```
@@ -94,7 +94,7 @@ Restart the launcher after changing `DEFAULT_PROJECT`. Most tools accept `projec
 ## Test write locally before connecting ChatGPT
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run mcp:call -- write_file "{\"project\":\"TravelTank300\",\"path\":\"CHATGPT_AGENT_TEST.md\",\"content\":\"# ChatGPT Agent Test`n`nwrite_file works.`n\"}"
 npm run mcp:call -- read_file "{\"project\":\"TravelTank300\",\"path\":\"CHATGPT_AGENT_TEST.md\"}"
 ```
@@ -206,3 +206,4 @@ This repository has verified:
 - `write_file` is rejected in `SAFE` mode.
 - Writing `.env` secret files is rejected.
 - Path traversal remains rejected.
+

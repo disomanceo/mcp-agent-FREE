@@ -18,18 +18,32 @@ Repository: `disomanceo/mcp-agent-FREE`
 - [x] มี GUI สำหรับช่วยใช้งาน Agent
 - [x] ปรับ README สำหรับรุ่นแจกฟรี
 - [x] สร้าง TODO แยกสำหรับรุ่น FREE
+- [x] เปลี่ยน URL installer/update ให้ใช้ `disomanceo/mcp-agent-FREE`
+- [x] แยกโฟลเดอร์ติดตั้ง FREE เป็น `D:\mcp-agent-FREE`
+- [x] สร้างคู่มือติดตั้งภาษาไทย `docs/INSTALL-FREE-TH.md`
+- [x] เตรียม EXE installer และ CMD fallback installer สำหรับ v1.0.7
+
+## ผลการตรวจสอบก่อน Release — 2026-08-16
+
+- [x] `npm install` ผ่าน — 0 vulnerabilities
+- [x] `npm run typecheck` ผ่าน
+- [x] `npm test` ผ่าน — 30/30 tests
+- [x] `npm run build` ผ่าน
+- [x] `npm run lint` ผ่าน
+- [x] `npm run smoke` ผ่าน
+- [x] Inno Setup compile ตัวติดตั้งได้
+- [x] ตัด `.personal-mcp` local metadata ออกจาก EXE installer
+- [x] ตรวจให้ตัวติดตั้งรุ่น FREE ไม่ชี้กลับไป repository หลัก
+- [ ] ยืนยัน clean install บน Windows เครื่องที่ไม่เคยติดตั้ง Personal MCP Agent มาก่อน
 
 ## งานลำดับถัดไป
 
-- [ ] ตรวจสอบ `npm install` บนเครื่องใหม่แบบ clean install
-- [ ] รัน `typecheck`, `test`, `build`, `lint` และ `smoke` ให้ผ่านทั้งหมด
 - [ ] ตรวจสอบข้อความภาษาไทยใน GUI ทุกหน้าไม่ให้ encoding เพี้ยน
 - [ ] เพิ่มปุ่ม Repair ใน GUI เพื่อซ่อม dependency / tunnel โดยไม่ต้องเปิดไฟล์ CMD
 - [ ] เพิ่มข้อความภาษาไทยเมื่อ ngrok หรือ winget ติดตั้งไม่ได้
 - [ ] ทำหน้า Help ภาษาไทยแบบสั้นสำหรับผู้ใช้ใหม่
-- [ ] ตรวจสอบขั้นตอนเชื่อม ChatGPT Developer Mode / MCP ให้ตรงกับการใช้งานจริงปัจจุบัน
-- [ ] ทำตัวติดตั้งรุ่น FREE ที่ระบุชื่อและเวอร์ชันชัดเจน
-- [ ] เตรียม GitHub Release แรกของสาย FREE
+- [ ] ตรวจสอบขั้นตอนเชื่อม ChatGPT Developer Mode / MCP เมื่อ UI ของ ChatGPT มีการเปลี่ยนแปลง
+- [ ] พิจารณา code signing certificate เพื่อลด Windows SmartScreen / Smart App Control warning
 
 ## ขอบเขตที่ต้องรักษา
 
@@ -40,20 +54,17 @@ Repository: `disomanceo/mcp-agent-FREE`
 - ห้าม commit `.env`, token, API key หรือ secret ขึ้น GitHub
 - ฟีเจอร์ใหม่ต้องไม่ทำลายการใช้งานของผู้ใช้ v1.0.7 เดิมโดยไม่จำเป็น
 
-## แนวทางเวอร์ชัน
-
-เริ่มสาย FREE จากฐาน `v1.0.7` และใช้เวอร์ชันแยกของ repository นี้เมื่อเริ่มแก้ไขฟีเจอร์ เช่น `free-v1.0.0` หรือรูปแบบเวอร์ชันที่กำหนดภายหลัง
-
-## ก่อนออก Release
+## ก่อนออก Release ครั้งถัดไป
 
 - [ ] `npm install` ผ่าน
 - [ ] `npm run typecheck` ผ่าน
 - [ ] `npm test` ผ่าน
 - [ ] `npm run build` ผ่าน
-- [ ] `npm run lint` ผ่าน (ถ้ามี script)
+- [ ] `npm run lint` ผ่าน
 - [ ] `npm run smoke` ผ่าน
-- [ ] ทดสอบ Start / Stop / Repair / Doctor บน Windows
-- [ ] ตรวจสอบว่าไม่มี secret ใน Git diff
+- [ ] build EXE installer ใหม่
+- [ ] เตรียม CMD fallback installer
+- [ ] ตรวจสอบว่าไม่มี secret / local metadata ใน installer
 - [ ] ตรวจสอบ README และคู่มือภาษาไทย
 - [ ] สร้าง Release notes
 

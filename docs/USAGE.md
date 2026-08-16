@@ -1,68 +1,68 @@
-# ทดลองใช้งานจริง
+﻿# เธ—เธ”เธฅเธญเธเนเธเนเธเธฒเธเธเธฃเธดเธ
 
-เอกสารนี้ใช้กับการรันแบบ local บน Windows ก่อน ส่วน Vercel ตอนนี้เป็นหน้า project status เพราะ Gateway ของเฟสแรกต้องใช้ WebSocket connection แบบ long-lived กับ Desktop Agent
+เน€เธญเธเธชเธฒเธฃเธเธตเนเนเธเนเธเธฑเธเธเธฒเธฃเธฃเธฑเธเนเธเธ local เธเธ Windows เธเนเธญเธ เธชเนเธงเธ Vercel เธ•เธญเธเธเธตเนเน€เธเนเธเธซเธเนเธฒ project status เน€เธเธฃเธฒเธฐ Gateway เธเธญเธเน€เธเธชเนเธฃเธเธ•เนเธญเธเนเธเน WebSocket connection เนเธเธ long-lived เธเธฑเธ Desktop Agent
 
-## 1. เตรียมเครื่อง
+## 1. เน€เธ•เธฃเธตเธขเธกเน€เธเธฃเธทเนเธญเธ
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm install
 npm run setup:local
 npm run mode:work
 npm run doctor
 ```
 
-`setup:local` จะสร้าง:
+`setup:local` เธเธฐเธชเธฃเนเธฒเธ:
 
-- `.env` พร้อม token แบบสุ่ม
+- `.env` เธเธฃเนเธญเธก token เนเธเธเธชเธธเนเธก
 - `D:\AI-Workspace`
 - `D:\AI-Workspace\SampleProject`
 
-`mode:work` เปิดสิทธิ์เขียนไฟล์ผ่าน tool `write_file` ภายใต้ `D:\AI-Workspace` เท่านั้น
+`mode:work` เน€เธเธดเธ”เธชเธดเธ—เธเธดเนเน€เธเธตเธขเธเนเธเธฅเนเธเนเธฒเธ tool `write_file` เธ เธฒเธขเนเธ•เน `D:\AI-Workspace` เน€เธ—เนเธฒเธเธฑเนเธ
 
-## 2. เปิด Gateway
+## 2. เน€เธเธดเธ” Gateway
 
-วิธีง่ายสุด:
+เธงเธดเธเธตเธเนเธฒเธขเธชเธธเธ”:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run start:chatgpt
 ```
 
-หรือดับเบิลคลิก:
+เธซเธฃเธทเธญเธ”เธฑเธเน€เธเธดเธฅเธเธฅเธดเธ:
 
 ```text
-D:\personal-mcp-agent\Personal MCP Agent.cmd
+D:\mcp-agent-FREE\Personal MCP Agent.cmd
 ```
 
-คำสั่งนี้จะเปิด Gateway + Agent + ngrok ให้ในหน้าต่างเดียว และพิมพ์ `MCP URL` สำหรับ ChatGPT
+เธเธณเธชเธฑเนเธเธเธตเนเธเธฐเน€เธเธดเธ” Gateway + Agent + ngrok เนเธซเนเนเธเธซเธเนเธฒเธ•เนเธฒเธเน€เธ”เธตเธขเธง เนเธฅเธฐเธเธดเธกเธเน `MCP URL` เธชเธณเธซเธฃเธฑเธ ChatGPT
 
-ถ้าต้องการเปิดแยกเอง ให้ใช้วิธีด้านล่าง
+เธ–เนเธฒเธ•เนเธญเธเธเธฒเธฃเน€เธเธดเธ”เนเธขเธเน€เธญเธ เนเธซเนเนเธเนเธงเธดเธเธตเธ”เนเธฒเธเธฅเนเธฒเธ
 
-เปิด PowerShell หน้าต่างที่ 1:
+เน€เธเธดเธ” PowerShell เธซเธเนเธฒเธ•เนเธฒเธเธ—เธตเน 1:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run dev:gateway
 ```
 
-ควรเห็นประมาณนี้:
+เธเธงเธฃเน€เธซเนเธเธเธฃเธฐเธกเธฒเธ“เธเธตเน:
 
 ```text
 Personal MCP Gateway listening on http://127.0.0.1:8787
 MCP endpoint: POST /mcp
 ```
 
-## 3. เปิด Desktop Agent
+## 3. เน€เธเธดเธ” Desktop Agent
 
-เปิด PowerShell หน้าต่างที่ 2:
+เน€เธเธดเธ” PowerShell เธซเธเนเธฒเธ•เนเธฒเธเธ—เธตเน 2:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run dev:agent
 ```
 
-ควรเห็น:
+เธเธงเธฃเน€เธซเนเธ:
 
 ```text
 Personal MCP Desktop Agent
@@ -72,16 +72,16 @@ Mode: SAFE
 Status: Connected
 ```
 
-## 4. ตรวจว่า Agent ต่อแล้ว
+## 4. เธ•เธฃเธงเธเธงเนเธฒ Agent เธ•เนเธญเนเธฅเนเธง
 
-เปิด PowerShell หน้าต่างที่ 3:
+เน€เธเธดเธ” PowerShell เธซเธเนเธฒเธ•เนเธฒเธเธ—เธตเน 3:
 
 ```powershell
 curl http://127.0.0.1:8787/health
 curl http://127.0.0.1:8787/api/devices
 ```
 
-## 5. ทดลองเรียก MCP tools
+## 5. เธ—เธ”เธฅเธญเธเน€เธฃเธตเธขเธ MCP tools
 
 ```powershell
 npm run mcp:call -- get_projects "{}"
@@ -91,88 +91,89 @@ npm run mcp:call -- npm_build "{\"project\":\"SampleProject\"}"
 npm run mcp:call -- npm_test "{\"project\":\"SampleProject\"}"
 ```
 
-ทดลองเขียนไฟล์:
+เธ—เธ”เธฅเธญเธเน€เธเธตเธขเธเนเธเธฅเน:
 
 ```powershell
 npm run mcp:call -- write_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT_AGENT_TEST.md\",\"content\":\"# Test`n`nwrite_file works.`n\"}"
 npm run mcp:call -- read_file "{\"project\":\"SampleProject\",\"path\":\"CHATGPT_AGENT_TEST.md\"}"
 ```
 
-ทดลองเขียนไฟล์กับโปรเจกต์จริงแบบชั่วคราวและ cleanup อัตโนมัติ:
+เธ—เธ”เธฅเธญเธเน€เธเธตเธขเธเนเธเธฅเนเธเธฑเธเนเธเธฃเน€เธเธเธ•เนเธเธฃเธดเธเนเธเธเธเธฑเนเธงเธเธฃเธฒเธงเนเธฅเธฐ cleanup เธญเธฑเธ•เนเธเธกเธฑเธ•เธด:
 
 ```powershell
 npm run demo:work -- TravelTank300
 ```
 
-ทดลอง stage/commit/push กับ repo ชั่วคราวที่ cleanup อัตโนมัติ:
+เธ—เธ”เธฅเธญเธ stage/commit/push เธเธฑเธ repo เธเธฑเนเธงเธเธฃเธฒเธงเธ—เธตเน cleanup เธญเธฑเธ•เนเธเธกเธฑเธ•เธด:
 
 ```powershell
 npm run demo:git
 ```
 
-เปิด tunnel ผ่าน ngrok สำหรับ ChatGPT:
+เน€เธเธดเธ” tunnel เธเนเธฒเธ ngrok เธชเธณเธซเธฃเธฑเธ ChatGPT:
 
 ```powershell
 npm run tunnel:ngrok
 ```
 
-ถ้าต้องการดู git status ให้ทำให้ sample project เป็น git repo ก่อน:
+เธ–เนเธฒเธ•เนเธญเธเธเธฒเธฃเธ”เธน git status เนเธซเนเธ—เธณเนเธซเน sample project เน€เธเนเธ git repo เธเนเธญเธ:
 
 ```powershell
 cd D:\AI-Workspace\SampleProject
 git init
 git add README.md package.json
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run mcp:call -- git_status "{\"project\":\"SampleProject\"}"
 ```
 
-## 6. ทดสอบครบชุดอัตโนมัติ
+## 6. เธ—เธ”เธชเธญเธเธเธฃเธเธเธธเธ”เธญเธฑเธ•เนเธเธกเธฑเธ•เธด
 
 ```powershell
 npm run smoke
 ```
 
-หรือทดลองแบบเปิด Gateway + Agent ชั่วคราว แล้วเรียก tools กับ `SampleProject`:
+เธซเธฃเธทเธญเธ—เธ”เธฅเธญเธเนเธเธเน€เธเธดเธ” Gateway + Agent เธเธฑเนเธงเธเธฃเธฒเธง เนเธฅเนเธงเน€เธฃเธตเธขเธ tools เธเธฑเธ `SampleProject`:
 
 ```powershell
 npm run demo:local
 ```
 
-ตรวจโปรเจกต์จริงด้วยชื่อโฟลเดอร์ใต้ `D:\AI-Workspace`:
+เธ•เธฃเธงเธเนเธเธฃเน€เธเธเธ•เนเธเธฃเธดเธเธ”เนเธงเธขเธเธทเนเธญเนเธเธฅเน€เธ”เธญเธฃเนเนเธ•เน `D:\AI-Workspace`:
 
 ```powershell
 npm run demo:local -- TravelTank300 package.json
 ```
 
-## ใช้งานกับโปรเจกต์จริง
+## เนเธเนเธเธฒเธเธเธฑเธเนเธเธฃเน€เธเธเธ•เนเธเธฃเธดเธ
 
-วางหรือ clone โปรเจกต์จริงไว้ใต้:
+เธงเธฒเธเธซเธฃเธทเธญ clone เนเธเธฃเน€เธเธเธ•เนเธเธฃเธดเธเนเธงเนเนเธ•เน:
 
 ```text
 D:\AI-Workspace
 ```
 
-ตัวอย่าง:
+เธ•เธฑเธงเธญเธขเนเธฒเธ:
 
 ```powershell
 cd D:\AI-Workspace
 git clone https://github.com/your-name/your-project.git
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run mcp:call -- list_files "{\"project\":\"your-project\"}"
 ```
 
-ตั้ง default project เพื่อให้ ChatGPT ไม่ต้องส่ง `project` ทุก tool:
+เธ•เธฑเนเธ default project เน€เธเธทเนเธญเนเธซเน ChatGPT เนเธกเนเธ•เนเธญเธเธชเนเธ `project` เธ—เธธเธ tool:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run project:list
 npm run project:set -- TravelTank300
 ```
 
-หลังเปลี่ยน default project ให้ restart Agent/Gateway หรือรัน `npm run start:chatgpt` ใหม่
+เธซเธฅเธฑเธเน€เธเธฅเธตเนเธขเธ default project เนเธซเน restart Agent/Gateway เธซเธฃเธทเธญเธฃเธฑเธ `npm run start:chatgpt` เนเธซเธกเน
 
-Agent จะปฏิเสธ path ที่ออกนอก `WORKSPACE_ROOT` เช่น `../secret`, `C:\Windows`, หรือ `\\server\share`
+Agent เธเธฐเธเธเธดเน€เธชเธ path เธ—เธตเนเธญเธญเธเธเธญเธ `WORKSPACE_ROOT` เน€เธเนเธ `../secret`, `C:\Windows`, เธซเธฃเธทเธญ `\\server\share`
 
-## เชื่อมกับ ChatGPT
+## เน€เธเธทเนเธญเธกเธเธฑเธ ChatGPT
 
-ดูขั้นตอนที่ [docs/CHATGPT.md](CHATGPT.md)
+เธ”เธนเธเธฑเนเธเธ•เธญเธเธ—เธตเน [docs/CHATGPT.md](CHATGPT.md)
+

@@ -1,4 +1,4 @@
-# Windows Installer
+﻿# Windows Installer
 
 Use this when you want a simple app-like installation instead of manually cloning the repository.
 
@@ -7,12 +7,12 @@ Use this when you want a simple app-like installation instead of manually clonin
 Open PowerShell as a normal user:
 
 ```powershell
-irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/disomanceo/mcp-agent-FREE/master/install.ps1 | iex
 ```
 
 The installer will:
 
-- clone or update `D:\personal-mcp-agent`
+- clone or update `D:\mcp-agent-FREE`
 - install Node.js LTS automatically when Node.js 22+ is missing
 - install Git for Windows automatically when Git is missing
 - install npm dependencies
@@ -42,14 +42,14 @@ Or install with:
 
 ```powershell
 $env:NGROK_AUTHTOKEN="YOUR_TOKEN_HERE"
-irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/disomanceo/mcp-agent-FREE/master/install.ps1 | iex
 ```
 
 ## Setup.exe installer
 
 For non-technical users, the easiest option is the Windows setup file from GitHub Releases:
 
-[Latest release](https://github.com/disomanceo/personal-mcp-agent/releases/latest)
+[Latest release](https://github.com/disomanceo/mcp-agent-FREE/releases/latest)
 
 Download the file named like:
 
@@ -94,7 +94,7 @@ Personal MCP Agent
 Or run:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run start:gui
 ```
 
@@ -113,7 +113,7 @@ The left sidebar opens real views:
 The old terminal launcher is still available:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run start:chatgpt
 ```
 
@@ -146,7 +146,7 @@ Supported URL types:
 Or use PowerShell:
 
 ```powershell
-cd D:\personal-mcp-agent
+cd D:\mcp-agent-FREE
 npm run project:list
 npm run project:set -- TravelTank300
 ```
@@ -156,12 +156,13 @@ Restart the launcher after changing projects.
 ## Update
 
 ```powershell
-irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/update.ps1 | iex
+irm https://raw.githubusercontent.com/disomanceo/mcp-agent-FREE/master/update.ps1 | iex
 ```
 
 ## Custom install path
 
 ```powershell
-irm https://raw.githubusercontent.com/disomanceo/personal-mcp-agent/master/install.ps1 -OutFile "$env:TEMP\install-personal-mcp-agent.ps1"
+irm https://raw.githubusercontent.com/disomanceo/mcp-agent-FREE/master/install.ps1 -OutFile "$env:TEMP\install-personal-mcp-agent.ps1"
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-personal-mcp-agent.ps1" -InstallDir "C:\Tools\personal-mcp-agent" -WorkspaceRoot "D:\AI-Workspace"
 ```
+

@@ -33,13 +33,37 @@ ChatGPT -> MCP over HTTPS -> Gateway -> Secure WebSocket -> Desktop Agent -> WOR
 - มีคำสั่ง Start / Stop / Update / Repair / Doctor สำหรับ Windows
 - มี GUI สำหรับช่วยเปิดใช้งาน Agent
 
+## ดาวน์โหลดและติดตั้ง
+
+ไปที่ GitHub Releases ของ repository `disomanceo/mcp-agent-FREE` แล้วเลือกไฟล์ตามต้องการ:
+
+- `PersonalMCPAgent-FREE-Setup-1.0.7.exe` — แนะนำสำหรับผู้ใช้ทั่วไป
+- `PersonalMCPAgent-FREE-Installer-1.0.7.cmd` — ตัวสำรองเมื่อ Windows บล็อก EXE หรือเมื่อต้องการติดตั้งผ่าน script
+
+คู่มือภาษาไทยแบบละเอียด: [docs/INSTALL-FREE-TH.md](docs/INSTALL-FREE-TH.md)
+
+ตัวติดตั้งจะตรวจ Node.js 22+, npm, Git, ngrok และ Cloudflare fallback ตามความจำเป็น โดยติดตั้งโปรแกรมเริ่มต้นที่:
+
+```text
+D:\mcp-agent-FREE
+```
+
+และใช้พื้นที่โปรเจกต์งานที่:
+
+```text
+D:\AI-Workspace
+```
+
 ## Requirements
 
-- Windows 10/11
+- Windows 10/11 64-bit
 - Node.js 22+
 - npm 10+
 - Git
 - อินเทอร์เน็ตสำหรับการเชื่อมต่อ ChatGPT และ tunnel
+- ngrok แนะนำสำหรับ MCP URL; มี Cloudflare fallback ใน v1.0.7
+
+ถ้าใช้ตัว Installer และเครื่องมี `winget` ระบบจะพยายามติดตั้งส่วนที่ขาดให้อัตโนมัติ
 
 ## ติดตั้งสำหรับนักพัฒนา
 
@@ -82,6 +106,7 @@ PERMISSION_MODE=SAFE
 npm run typecheck
 npm test
 npm run build
+npm run lint
 npm run smoke
 ```
 
@@ -105,10 +130,11 @@ Repository นี้ตั้งใจใช้เป็น **รุ่นแจ
 
 ## เอกสารเพิ่มเติม
 
+- `docs/INSTALL-FREE-TH.md` — คู่มือติดตั้ง FREE v1.0.7
 - `docs/QUICKSTART-TH.md` — คู่มือเริ่มต้นภาษาไทย
 - `docs/CHATGPT.md` — แนวทางเชื่อมต่อกับ ChatGPT
 - `docs/USAGE.md` — ตัวอย่างการใช้งาน
-- `docs/INSTALLER.md` — รายละเอียดการติดตั้ง
+- `docs/INSTALLER.md` — รายละเอียดตัวติดตั้ง
 - `TODO.md` — แผนพัฒนารุ่น FREE
 
 ## Repository

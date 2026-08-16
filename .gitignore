@@ -14,3 +14,4 @@ unins*.exe
 
 .vercel
 .env*
+.personal-mcp/

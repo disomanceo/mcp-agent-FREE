@@ -1,7 +1,7 @@
-#define MyAppName "Personal MCP Agent"
+﻿#define MyAppName "Personal MCP Agent FREE"
 #define MyAppVersion "1.0.7"
 #define MyAppPublisher "disomanceo"
-#define MyAppURL "https://github.com/disomanceo/personal-mcp-agent"
+#define MyAppURL "https://github.com/disomanceo/mcp-agent-FREE"
 #define MyAppExeName "Personal MCP Agent.cmd"
 #define MyAppStopName "Stop Personal MCP Agent.cmd"
 #define MyAppUpdateName "Update Personal MCP Agent.cmd"
@@ -16,11 +16,11 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName=D:\personal-mcp-agent
+DefaultDirName=D:\mcp-agent-FREE
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist-installer
-OutputBaseFilename=PersonalMCPAgent-Setup-{#MyAppVersion}
+OutputBaseFilename=PersonalMCPAgent-FREE-Setup-{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -36,7 +36,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a Desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 
 [Files]
-Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".git\*,node_modules\*,dist-installer\*,audit\*,work-smoke\*,.vercel\*,apps\*\dist\*,packages\*\dist\*,apps\*\*.tsbuildinfo,packages\*\*.tsbuildinfo,unins*.dat,unins*.exe,.env,.env.*"
+Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".git\*,.personal-mcp\*,node_modules\*,dist-installer\*,audit\*,work-smoke\*,.vercel\*,apps\*\dist\*,packages\*\dist\*,apps\*\*.tsbuildinfo,packages\*\*.tsbuildinfo,unins*.dat,unins*.exe,.env,.env.*"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\app-icon.ico"
